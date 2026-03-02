@@ -19,5 +19,6 @@ pub fn router() -> Router<AppState> {
         .route("/partials/messages", get(partials::messages_partial))
         .route("/partials/conversations", get(partials::conversations_partial))
         .route("/partials/search-results", get(partials::search_results_partial))
+        .route("/partials/conversation-attachments", get(partials::conversation_attachments_partial))
         .nest_service("/static", ServeDir::new("static"))
 }

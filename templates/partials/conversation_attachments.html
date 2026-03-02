@@ -1,0 +1,41 @@
+{% if attachments.is_empty() %}
+<p class="empty-state">No attachments in this conversation.</p>
+{% else %}
+<div class="attachments-grid">
+    {% for a in attachments %}
+    <div class="attachment-card{% if !a.file_exists %} missing{% endif %}">
+        <div class="attachment-preview">
+            {% if a.is_image %}
+            <div class="image-placeholder">📷</div>
+            {% else if a.mime_category == "video" %}
+            <div class="video-placeholder">🎬</div>
+            {% else if a.mime_category == "audio" %}
+            <div class="audio-placeholder">🔊</div>
+            {% else %}
+            <div class="file-placeholder">📄</div>
+            {% endif %}
+        </div>
+        <div class="attachment-info">
+            <div class="attachment-name">
+                <a href="/attachments/download/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
+                    {{ a.display_name }}
+                </a>
+            </div>
+            <div class="attachment-meta">
+                <span>{{ a.size }}</span>
+                <span>{{ a.date }}</span>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if has_more %}
+<div hx-get="/partials/conversation-attachments?conversation_id={{ conversation_id }}&page={{ page + 1 }}"
+     hx-trigger="revealed"
+     hx-swap="afterend"
+     class="loading-sentinel">
+    <p aria-busy="true">Loading more...</p>
+</div>
+{% endif %}
+{% endif %}

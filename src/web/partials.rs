@@ -215,3 +215,70 @@ pub async fn search_results_partial(
     };
     Html(t.render().unwrap_or_default())
 }
+
+#[derive(Deserialize)]
+pub struct ConversationAttachmentsQuery {
+    pub conversation_id: i64,
+    pub page: Option<u32>,
+}
+
+struct ConversationAttachmentView {
+    id: i64,
+    display_name: String,
+    mime_type: Option<String>,
+    mime_category: String,
+    size: String,
+    file_exists: bool,
+    date: String,
+    is_image: bool,
+}
+
+#[derive(Template)]
+#[template(path = "partials/conversation_attachments.html")]
+struct ConversationAttachmentsPartialTemplate {
+    attachments: Vec<ConversationAttachmentView>,
+    conversation_id: i64,
+    page: u32,
+    has_more: bool,
+}
+
+const ATTACHMENTS_PER_PAGE: u32 = 50;
+
+pub async fn conversation_attachments_partial(
+    State(state): State<AppState>,
+    Query(params): Query<ConversationAttachmentsQuery>,
+) -> impl IntoResponse {
+    let conversation_id = params.conversation_id;
+    let page = params.page.unwrap_or(0);
+    let offset = (page * ATTACHMENTS_PER_PAGE) as i64;
+    let limit = (ATTACHMENTS_PER_PAGE + 1) as i64;
+
+    let conn = state.db.lock().unwrap();
+    let rows = queries::conversation_attachments(&conn, conversation_id, offset, limit)
+        .unwrap_or_default();
+
+    let has_more = rows.len() > ATTACHMENTS_PER_PAGE as usize;
+    let rows: Vec<_> = rows.into_iter().take(ATTACHMENTS_PER_PAGE as usize).collect();
+
+    let attachments: Vec<ConversationAttachmentView> = rows
+        .into_iter()
+        .map(|a| ConversationAttachmentView {
+            id: a.id,
+            display_name: a.display_name().to_string(),
+            mime_type: a.mime_type.clone(),
+            mime_category: a.mime_category().to_string(),
+            size: a.human_size(),
+            file_exists: a.file_exists,
+            date: a.date_formatted(),
+            is_image: a.mime_type.as_deref().map(|m| m.starts_with("image/")).unwrap_or(false),
+        })
+        .collect();
+
+    let t = ConversationAttachmentsPartialTemplate {
+        attachments,
+        conversation_id,
+        page,
+        has_more,
+    };
+    Html(t.render().unwrap_or_default())
+}

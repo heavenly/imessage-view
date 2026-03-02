@@ -542,3 +542,56 @@ pub fn count_attachments(conn: &Connection, mime_filter: Option<&str>) -> anyhow
     let count: i64 = conn.query_row(&sql, param_refs.as_slice(), |r| r.get(0))?;
     Ok(count)
 }
+
+pub fn conversation_attachments(
+    conn: &Connection,
+    conversation_id: i64,
+    offset: i64,
+    limit: i64,
+) -> anyhow::Result<Vec<AttachmentRow>> {
+    let sql = format!(
+        "SELECT a.id, a.filename, a.mime_type, a.total_bytes, a.resolved_path,
+                a.file_exists, a.transfer_name,
+                COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
+                m.date_unix,
+                c.id AS conversation_id
+         FROM attachments a
+         JOIN messages m ON m.id = a.message_id
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE m.conversation_id = ?1
+         ORDER BY m.date_unix DESC
+         LIMIT {limit} OFFSET {offset}"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([conversation_id], |row| {
+            Ok(AttachmentRow {
+                id: row.get(0)?,
+                filename: row.get(1)?,
+                mime_type: row.get(2)?,
+                total_bytes: row.get(3)?,
+                resolved_path: row.get(4)?,
+                file_exists: row.get(5)?,
+                transfer_name: row.get(6)?,
+                conversation_name: row.get(7)?,
+                message_date: row.get(8)?,
+                conversation_id: row.get(9)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
+pub fn count_conversation_attachments(conn: &Connection, conversation_id: i64) -> anyhow::Result<i64> {
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*)
+         FROM attachments a
+         JOIN messages m ON m.id = a.message_id
+         WHERE m.conversation_id = ?1",
+        [conversation_id],
+        |r| r.get(0),
+    )?;
+    Ok(count)
+}

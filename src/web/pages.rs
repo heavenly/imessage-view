@@ -35,6 +35,7 @@ pub struct ConversationRow {
     pub last_preview: String,
     pub relative_date: String,
     pub message_count: i64,
+    pub is_group: bool,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +82,7 @@ pub fn build_conversation_rows(state: &AppState, filter: Option<&str>) -> Vec<Co
                 last_preview,
                 relative_date,
                 message_count: c.message_count,
+                is_group: c.is_group,
             }
         })
         .collect()
@@ -122,6 +124,7 @@ struct ConversationTemplate {
     contact_name: String,
     is_group: bool,
     participants: Vec<String>,
+    attachment_count: i64,
 }
 
 pub async fn conversation(
@@ -148,12 +151,15 @@ pub async fn conversation(
         Err(_) => ("Unknown".to_string(), false, vec![]),
     };
 
+    let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
+
     let t = ConversationTemplate {
         title: format!("Conversation with {contact_name}"),
         conversation_id: id,
         contact_name,
         is_group,
         participants,
+        attachment_count,
     };
     Html(t.render().unwrap_or_default())
 }

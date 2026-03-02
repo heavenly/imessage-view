@@ -420,3 +420,200 @@ nav a {
         font-size: 1.2rem;
     }
 }
+
+
+/* Conversation list cards */
+.conversation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+.conversation-card {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    text-decoration: none;
+    color: inherit;
+    transition: background 0.2s;
+}
+
+.conversation-card:hover {
+    background: var(--pico-card-background-color);
+}
+
+.conversation-card .avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--pico-primary);
+    color: var(--pico-primary-inverse);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.conversation-card .avatar.group {
+    background: var(--pico-secondary);
+}
+
+.conversation-card .card-content {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    margin-left: 1rem;
+}
+
+.conversation-card .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.conversation-card .card-name {
+    font-weight: 600;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.conversation-card .card-time {
+    font-size: 0.8rem;
+    opacity: 0.6;
+    flex-shrink: 0;
+    margin-left: 0.5rem;
+}
+
+.conversation-card .card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 0.25rem;
+}
+
+.conversation-card .card-preview {
+    font-size: 0.85rem;
+    opacity: 0.6;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+}
+
+.conversation-card .card-badge {
+    font-size: 0.75rem;
+    background: var(--pico-muted-border-color);
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.75rem;
+    flex-shrink: 0;
+}
+
+/* Tab bar */
+.tab-bar {
+    display: flex;
+    border-bottom: 2px solid var(--pico-muted-border-color);
+    margin-bottom: 1rem;
+}
+
+.tab-bar .tab {
+    padding: 0.75rem 1.5rem;
+    cursor: pointer;
+    border: none;
+    background: transparent;
+    border-bottom: 3px solid transparent;
+    font-size: 0.95rem;
+    color: inherit;
+    opacity: 0.6;
+    transition: all 0.2s;
+}
+
+.tab-bar .tab:hover {
+    opacity: 0.8;
+}
+
+.tab-bar .tab.active {
+    border-bottom-color: var(--pico-primary);
+    opacity: 1;
+    font-weight: 600;
+}
+
+.tab-bar .tab .tab-count {
+    font-size: 0.75rem;
+    opacity: 0.6;
+    margin-left: 0.3rem;
+}
+
+/* Conversation header */
+.conversation-header-bar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--pico-muted-border-color);
+    margin-bottom: 1rem;
+}
+
+.conversation-header-bar .back-link {
+    text-decoration: none;
+    font-size: 1.5rem;
+    opacity: 0.6;
+    flex-shrink: 0;
+}
+
+.conversation-header-bar .back-link:hover {
+    opacity: 1;
+}
+
+.header-avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--pico-primary);
+    color: var(--pico-primary-inverse);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 600;
+    flex-shrink: 0;
+}
+
+.header-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.header-info .header-name {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.header-info .header-participants {
+    font-size: 0.8rem;
+    opacity: 0.6;
+    margin: 0;
+}
+
+/* Tab content area */
+.tab-content {
+    min-height: 200px;
+}
+
+/* Responsive Styles */
+@media (max-width: 768px) {
+    .conversation-card .avatar {
+        width: 40px;
+        height: 40px;
+        font-size: 1rem;
+    }
+    
+    .tab-bar .tab {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+}

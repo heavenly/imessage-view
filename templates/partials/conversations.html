@@ -1,24 +1,23 @@
 {% if conversations.is_empty() %}
-<p>No conversations found.</p>
+<p class="empty-state">No conversations found.</p>
 {% else %}
-<table role="grid">
-    <thead>
-        <tr>
-            <th>Name</th>
-            <th>Last Message</th>
-            <th>When</th>
-            <th>Messages</th>
-        </tr>
-    </thead>
-    <tbody>
-        {% for c in conversations %}
-        <tr>
-            <td><a href="/conversations/{{ c.id }}">{{ c.name }}</a></td>
-            <td>{{ c.last_preview }}</td>
-            <td>{{ c.relative_date }}</td>
-            <td><span class="badge">{{ c.message_count }}</span></td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
+<div class="conversation-list">
+    {% for c in conversations %}
+    <a href="/conversations/{{ c.id }}" class="conversation-card">
+        <div class="avatar{% if c.is_group %} group{% endif %}">
+            {% if c.is_group %}👥{% else %}{{ c.name.chars().next().unwrap_or('?') }}{% endif %}
+        </div>
+        <div class="card-content">
+            <div class="card-top">
+                <span class="card-name">{{ c.name }}</span>
+                <span class="card-time">{{ c.relative_date }}</span>
+            </div>
+            <div class="card-bottom">
+                <span class="card-preview">{{ c.last_preview }}</span>
+                <span class="card-badge">{{ c.message_count }}</span>
+            </div>
+        </div>
+    </a>
+    {% endfor %}
+</div>
 {% endif %}

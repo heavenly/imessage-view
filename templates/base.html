@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}iMessage Search{% endblock %}</title>
+    <link rel="stylesheet" href="/static/css/pico.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="/static/js/htmx.min.js"></script>
+</head>
+<body>
+    <nav class="container">
+        <ul>
+            <li><strong><a href="/">iMessage</a></strong></li>
+        </ul>
+        <ul>
+            <li><a href="/">Conversations</a></li>
+            <li><a href="/search">Search</a></li>
+            <li><a href="/attachments">Attachments</a></li>
+            <li><a href="/analytics">Analytics</a></li>
+        </ul>
+    </nav>
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

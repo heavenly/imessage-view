@@ -1,0 +1,422 @@
+nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 1rem;
+}
+
+nav ul {
+    list-style: none;
+    display: flex;
+    gap: 1rem;
+    margin: 0;
+    padding: 0;
+}
+
+nav a {
+    text-decoration: none;
+}
+
+.htmx-indicator {
+    opacity: 0;
+    transition: opacity 200ms ease-in;
+}
+
+.htmx-request .htmx-indicator {
+    opacity: 1;
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stats-grid article {
+    text-align: center;
+    padding: 1rem;
+    margin: 0;
+}
+
+.stats-grid article header {
+    font-size: 0.9rem;
+    opacity: 0.7;
+    padding: 0.5rem 0;
+}
+
+.stat-value {
+    font-size: 2rem;
+    font-weight: bold;
+    margin: 0;
+}
+
+.date-range {
+    margin-bottom: 1.5rem;
+    opacity: 0.8;
+}
+
+.bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 220px;
+    padding: 0 0 2rem;
+    border-bottom: 1px solid var(--pico-muted-border-color, #ccc);
+    margin-bottom: 2rem;
+    position: relative;
+}
+
+.bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 100%;
+    justify-content: flex-end;
+}
+
+.bar-fill {
+    width: 100%;
+    max-width: 60px;
+    min-height: 2px;
+    background: var(--pico-primary, #1095c1);
+    border-radius: 3px 3px 0 0;
+    transition: height 0.3s;
+}
+
+.bar-count {
+    font-size: 0.7rem;
+    margin-bottom: 2px;
+    opacity: 0.7;
+}
+
+.bar-label {
+    font-size: 0.65rem;
+    margin-top: 6px;
+    position: absolute;
+    bottom: 0;
+    transform: rotate(-45deg);
+    transform-origin: top left;
+    white-space: nowrap;
+}
+
+.analytics-tables {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 2rem;
+}
+
+@media (max-width: 768px) {
+    .analytics-tables {
+        grid-template-columns: 1fr;
+    }
+}
+
+.conversation-header {
+    margin-bottom: 1.5rem;
+}
+
+.conversation-header .back-link {
+    text-decoration: none;
+    font-size: 0.9rem;
+    opacity: 0.7;
+}
+
+.conversation-header h1 {
+    margin: 0.5rem 0 0.25rem;
+}
+
+.conversation-header .participants {
+    font-size: 0.85rem;
+    opacity: 0.7;
+    margin: 0;
+}
+
+.messages-container {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding-bottom: 2rem;
+}
+
+.message {
+    display: flex;
+    max-width: 75%;
+}
+
+.message.sent {
+    align-self: flex-end;
+}
+
+.message.received {
+    align-self: flex-start;
+}
+
+.message-bubble {
+    padding: 0.6rem 1rem;
+    border-radius: 1rem;
+    position: relative;
+    word-break: break-word;
+}
+
+.message.sent .message-bubble {
+    background: var(--pico-primary, #1095c1);
+    color: var(--pico-primary-inverse, #fff);
+    border-bottom-right-radius: 0.25rem;
+}
+
+.message.received .message-bubble {
+    background: var(--pico-muted-border-color, #e0e0e0);
+    border-bottom-left-radius: 0.25rem;
+}
+
+.sender-name {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 0.2rem;
+    opacity: 0.8;
+}
+
+.message-body {
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.message-body.empty-body {
+    opacity: 0.6;
+    font-size: 0.85rem;
+}
+
+.attachments {
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid rgba(128, 128, 128, 0.2);
+}
+
+.attachment a {
+    display: block;
+    font-size: 0.8rem;
+    text-decoration: none;
+    padding: 0.2rem 0;
+}
+
+.message.sent .attachment a {
+    color: var(--pico-primary-inverse, #fff);
+    opacity: 0.9;
+}
+
+.att-size {
+    opacity: 0.7;
+    font-size: 0.75rem;
+}
+
+.message-meta {
+    display: block;
+    font-size: 0.7rem;
+    margin-top: 0.3rem;
+    opacity: 0.6;
+}
+
+.service-badge {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.3rem;
+    border-radius: 0.25rem;
+    background: rgba(128, 128, 128, 0.15);
+    margin-right: 0.3rem;
+}
+
+.date-label {
+    margin-left: 0.4rem;
+}
+
+.loading-sentinel {
+    text-align: center;
+    padding: 1rem;
+}
+
+.empty-state {
+    text-align: center;
+    opacity: 0.6;
+    padding: 3rem 1rem;
+}
+
+
+/* Attachments Page Styles */
+
+.attachments-stats {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+}
+
+.stat-box {
+    flex: 1;
+    min-width: 120px;
+    background: var(--pico-card-background-color, #f8f9fa);
+    border: 1px solid var(--pico-muted-border-color, #e0e0e0);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    text-align: center;
+    transition: all 0.2s;
+}
+
+.stat-box.active {
+    background: var(--pico-primary, #1095c1);
+    border-color: var(--pico-primary, #1095c1);
+}
+
+.stat-box.active .stat-link {
+    color: var(--pico-primary-inverse, #fff);
+}
+
+.stat-link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+}
+
+.stat-number {
+    display: block;
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 0.25rem;
+}
+
+.stat-label {
+    display: block;
+    font-size: 0.85rem;
+    opacity: 0.8;
+}
+
+.attachments-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.attachment-card {
+    background: var(--pico-card-background-color, #fff);
+    border: 1px solid var(--pico-muted-border-color, #e0e0e0);
+    border-radius: 0.5rem;
+    overflow: hidden;
+    transition: box-shadow 0.2s;
+}
+
+.attachment-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.attachment-card.missing {
+    opacity: 0.6;
+}
+
+.attachment-preview {
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--pico-muted-border-color, #f0f0f0);
+    font-size: 3rem;
+}
+
+.image-placeholder,
+.video-placeholder,
+.audio-placeholder,
+.file-placeholder {
+    opacity: 0.6;
+}
+
+.attachment-info {
+    padding: 0.75rem;
+}
+
+.attachment-name {
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.attachment-name a {
+    text-decoration: none;
+    color: var(--pico-primary, #1095c1);
+}
+
+.attachment-name a.missing-file {
+    color: var(--pico-muted-color, #666);
+    text-decoration: line-through;
+}
+
+.attachment-meta {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8rem;
+    opacity: 0.7;
+    margin-bottom: 0.5rem;
+}
+
+.attachment-conversation {
+    font-size: 0.8rem;
+}
+
+.attachment-conversation a {
+    color: var(--pico-muted-color, #666);
+    text-decoration: none;
+}
+
+.attachment-conversation a:hover {
+    text-decoration: underline;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding: 1rem;
+}
+
+.pagination .btn {
+    padding: 0.5rem 1rem;
+    text-decoration: none;
+    border-radius: 0.25rem;
+    background: var(--pico-primary, #1095c1);
+    color: var(--pico-primary-inverse, #fff);
+}
+
+.pagination .btn-secondary {
+    background: var(--pico-secondary, #6c757d);
+}
+
+.pagination .btn-disabled {
+    background: var(--pico-muted-border-color, #e0e0e0);
+    color: var(--pico-muted-color, #666);
+    cursor: not-allowed;
+}
+
+.page-info {
+    font-size: 0.9rem;
+    opacity: 0.8;
+}
+
+@media (max-width: 768px) {
+    .attachments-grid {
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    
+    .stat-box {
+        min-width: 100px;
+        padding: 0.75rem;
+    }
+    
+    .stat-number {
+        font-size: 1.2rem;
+    }
+}

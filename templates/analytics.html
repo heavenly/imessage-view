@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>Analytics</h1>
+
+<p class="date-range">Messages span from <strong>{{ earliest }}</strong> to <strong>{{ latest }}</strong></p>
+
+<div class="stats-grid">
+    <article>
+        <header>Messages</header>
+        <p class="stat-value">{{ total_messages }}</p>
+    </article>
+    <article>
+        <header>Conversations</header>
+        <p class="stat-value">{{ total_conversations }}</p>
+    </article>
+    <article>
+        <header>Contacts</header>
+        <p class="stat-value">{{ total_contacts }}</p>
+    </article>
+    <article>
+        <header>Attachments</header>
+        <p class="stat-value">{{ total_attachments }}</p>
+    </article>
+</div>
+
+<section>
+    <h2>Messages Over Time (Last 12 Months)</h2>
+    {% if month_bars.is_empty() %}
+    <p>No message data available.</p>
+    {% else %}
+    <div class="bar-chart">
+        {% for bar in month_bars %}
+        <div class="bar-col">
+            <span class="bar-count">{{ bar.count }}</span>
+            <div class="bar-fill" style="height: {{ bar.pct }}%"></div>
+            <span class="bar-label">{{ bar.label }}</span>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+</section>
+
+<div class="analytics-tables">
+    <section>
+        <h2>Top Conversations</h2>
+        {% if top_conversations.is_empty() %}
+        <p>No conversation data.</p>
+        {% else %}
+        <table role="grid">
+            <thead>
+                <tr><th>#</th><th>Name</th><th>Messages</th></tr>
+            </thead>
+            <tbody>
+                {% for c in top_conversations %}
+                <tr>
+                    <td>{{ c.rank }}</td>
+                    <td><a href="/conversations/{{ c.id }}">{{ c.name }}</a></td>
+                    <td>{{ c.count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </section>
+
+    <section>
+        <h2>Top Contacts</h2>
+        {% if top_contacts.is_empty() %}
+        <p>No contact data.</p>
+        {% else %}
+        <table role="grid">
+            <thead>
+                <tr><th>#</th><th>Name</th><th>Handle</th><th>Messages</th></tr>
+            </thead>
+            <tbody>
+                {% for c in top_contacts %}
+                <tr>
+                    <td>{{ c.rank }}</td>
+                    <td>{{ c.name }}</td>
+                    <td>{{ c.handle }}</td>
+                    <td>{{ c.count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </section>
+</div>
+
+<section>
+    <h2>Attachment Breakdown</h2>
+    <table role="grid">
+        <thead>
+            <tr><th>Category</th><th>Count</th></tr>
+        </thead>
+        <tbody>
+            <tr><td>Images</td><td>{{ att_images }}</td></tr>
+            <tr><td>Videos</td><td>{{ att_videos }}</td></tr>
+            <tr><td>Audio</td><td>{{ att_audio }}</td></tr>
+            <tr><td>Other</td><td>{{ att_other }}</td></tr>
+        </tbody>
+    </table>
+    <p>Total size: <strong>{{ att_total_size }}</strong></p>
+</section>
+{% endblock %}

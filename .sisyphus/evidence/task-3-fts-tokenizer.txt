@@ -1,0 +1,27 @@
+=== FTS5 Tokenizer Evidence ===
+Verified by: cargo test db::tests::test_fts5_trigram_tokenizer
+
+Test assertion: assert!(sql.contains("trigram"), ...)
+Schema SQL constant:
+
+pub const CREATE_MESSAGES_FTS: &str = "
+CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+    body, content='messages', content_rowid='id', tokenize='trigram'
+);";
+--
+    conn.execute_batch(CREATE_MESSAGES_FTS)?;
+    for idx in CREATE_INDEXES {
+        conn.execute_batch(idx)?;
+    }
+
+Test output:
+
+warning: `imessage-db-port` (bin "imessage-db-port" test) generated 11 warnings
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/main.rs (target/debug/deps/imessage_db_port-11a656efe6470ed0)
+
+running 1 test
+test db::tests::test_fts5_trigram_tokenizer ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.00s
+

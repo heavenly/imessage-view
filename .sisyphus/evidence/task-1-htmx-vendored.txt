@@ -1,0 +1,8 @@
+QA Scenario: htmx.min.js is vendored
+Date: 2026-03-01
+
+File exists: YES
+File size: 50917 bytes (49.7 KB)
+Size > 10KB: PASS
+
+VERDICT: PASS

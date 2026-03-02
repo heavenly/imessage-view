@@ -1,0 +1,25 @@
+{% if query.is_empty() %}
+<p>Enter a search query above.</p>
+{% else if results.is_empty() %}
+<p>No results found for "{{ query }}".</p>
+{% else %}
+<p>{{ total_count }} result{% if total_count != 1 %}s{% endif %} for "{{ query }}"</p>
+{% for r in results %}
+<article>
+    <header>
+        <strong>{{ r.sender_label }}</strong>
+        in <a href="/conversations/{{ r.conversation_id }}">{{ r.conversation_label }}</a>
+        &middot;
+        <small>{{ r.date_formatted }}</small>
+    </header>
+    <p>{{ r.snippet|safe }}</p>
+</article>
+{% endfor %}
+{% if has_more %}
+<button hx-get="/partials/search-results?q={{ query|urlencode }}&amp;page={{ next_page }}"
+        hx-target="#search-results"
+        hx-swap="beforeend">
+    Load More
+</button>
+{% endif %}
+{% endif %}

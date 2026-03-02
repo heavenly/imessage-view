@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>Conversations</h1>
+<input type="search"
+       name="filter"
+       placeholder="Filter by name or handle…"
+       value="{{ filter }}"
+       hx-get="/"
+       hx-trigger="input changed delay:300ms, search"
+       hx-target="#conversations-list"
+       hx-swap="innerHTML"
+       hx-push-url="false">
+<div id="conversations-list">
+    {% include "partials/conversations.html" %}
+</div>
+{% endblock %}

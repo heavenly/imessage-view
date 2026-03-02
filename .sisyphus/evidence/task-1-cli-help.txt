@@ -1,0 +1,21 @@
+QA Scenario: CLI shows help text
+Date: 2026-03-01
+
+$ cargo run -- --help
+Output:
+iMessage database viewer
+
+Usage: imessage-db-port <COMMAND>
+
+Commands:
+  import  Import iMessage data into the local database
+  serve   Start the web server
+  help    Print this message or the help of the given subcommand(s)
+
+Options:
+  -h, --help  Print help
+
+Contains 'import': YES
+Contains 'serve': YES
+
+VERDICT: PASS

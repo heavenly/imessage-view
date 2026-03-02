@@ -1,0 +1,57 @@
+{% if messages.is_empty() %}
+{% if page == 0 %}
+<p class="empty-state">No messages in this conversation.</p>
+{% endif %}
+{% else %}
+{% for msg in messages %}
+<div class="message {% if msg.is_from_me %}sent{% else %}received{% endif %}"
+     id="msg-{{ msg.id }}">
+    <div class="message-bubble">
+        {% if !msg.is_from_me %}
+        {% if let Some(name) = msg.sender_name %}
+        <span class="sender-name">{{ name }}</span>
+        {% endif %}
+        {% endif %}
+        {% if let Some(body) = msg.body %}
+        <p class="message-body">{{ body }}</p>
+        {% else %}
+        <p class="message-body empty-body"><em>No text content</em></p>
+        {% endif %}
+        {% if msg.has_attachments %}
+        <div class="attachments">
+            {% for att in msg.attachments %}
+            <div class="attachment">
+                <a href="/attachments/download/{{ att.id }}">
+                    {% if let Some(mime) = att.mime_type %}
+                    {% if mime.starts_with("image/") %}&#128247;{% else if mime.starts_with("video/") %}&#127909;{% else if mime.starts_with("audio/") %}&#127925;{% else %}&#128206;{% endif %}
+                    {% else %}
+                    &#128206;
+                    {% endif %}
+                    {% if let Some(tname) = att.transfer_name %}{{ tname }}{% else %}Attachment{% endif %}
+                    {% if let Some(bytes) = att.total_bytes %}
+                    <span class="att-size">({{ bytes }} bytes)</span>
+                    {% endif %}
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        <span class="message-meta">
+            {% if let Some(svc) = msg.service %}
+            <span class="service-badge">{{ svc }}</span>
+            {% endif %}
+            <time>{{ msg.time_formatted }}</time>
+            <span class="date-label">{{ msg.date_formatted }}</span>
+        </span>
+    </div>
+</div>
+{% endfor %}
+{% if has_more %}
+<div hx-get="/partials/messages?conversation_id={{ conversation_id }}&page={{ page + 1 }}"
+     hx-trigger="revealed"
+     hx-swap="afterend"
+     class="loading-sentinel">
+    <p aria-busy="true">Loading more&hellip;</p>
+</div>
+{% endif %}
+{% endif %}

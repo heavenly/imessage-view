@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>Attachments</h1>
+
+<div class="attachments-stats">
+    <div class="stat-box{% if filter == "" %} active{% endif %}">
+        <a href="/attachments" class="stat-link">
+            <span class="stat-number">{{ total_count }}</span>
+            <span class="stat-label">All</span>
+        </a>
+    </div>
+    <div class="stat-box{% if filter == "image" %} active{% endif %}">
+        <a href="/attachments?filter=image" class="stat-link">
+            <span class="stat-number">{{ image_count }}</span>
+            <span class="stat-label">Images</span>
+        </a>
+    </div>
+    <div class="stat-box{% if filter == "video" %} active{% endif %}">
+        <a href="/attachments?filter=video" class="stat-link">
+            <span class="stat-number">{{ video_count }}</span>
+            <span class="stat-label">Videos</span>
+        </a>
+    </div>
+    <div class="stat-box{% if filter == "audio" %} active{% endif %}">
+        <a href="/attachments?filter=audio" class="stat-link">
+            <span class="stat-number">{{ audio_count }}</span>
+            <span class="stat-label">Audio</span>
+        </a>
+    </div>
+    <div class="stat-box{% if filter == "other" %} active{% endif %}">
+        <a href="/attachments?filter=other" class="stat-link">
+            <span class="stat-number">{{ other_count }}</span>
+            <span class="stat-label">Other</span>
+        </a>
+    </div>
+</div>
+
+{% if attachments.is_empty() %}
+<p>No attachments found.</p>
+{% else %}
+<div class="attachments-grid">
+    {% for a in attachments %}
+    <div class="attachment-card{% if !a.file_exists %} missing{% endif %}">
+        <div class="attachment-preview">
+            {% if a.is_image %}
+            <div class="image-placeholder">📷</div>
+            {% else if a.mime_category == "video" %}
+            <div class="video-placeholder">🎬</div>
+            {% else if a.mime_category == "audio" %}
+            <div class="audio-placeholder">🔊</div>
+            {% else %}
+            <div class="file-placeholder">📄</div>
+            {% endif %}
+        </div>
+        <div class="attachment-info">
+            <div class="attachment-name" title="{{ a.display_name }}">
+                <a href="/attachments/download/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
+                    {{ a.display_name }}
+                </a>
+            </div>
+            <div class="attachment-meta">
+                <span class="attachment-size">{{ a.size }}</span>
+                <span class="attachment-date">{{ a.date }}</span>
+            </div>
+            {% if a.conversation_id.is_some() %}
+            <div class="attachment-conversation">
+                <a href="/conversations/{{ a.conversation_id.unwrap() }}">
+                    {{ a.conversation_name.as_deref().unwrap_or("Unknown") }}
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if has_prev %}
+    <a href="/attachments?filter={{ filter }}&page={{ page - 1 }}" class="btn btn-secondary">← Previous</a>
+    {% else %}
+    <span class="btn btn-disabled">← Previous</span>
+    {% endif %}
+    
+    <span class="page-info">Page {{ page }} of {{ total_pages }}</span>
+    
+    {% if has_next %}
+    <a href="/attachments?filter={{ filter }}&page={{ page + 1 }}" class="btn btn-secondary">Next →</a>
+    {% else %}
+    <span class="btn btn-disabled">Next →</span>
+    {% endif %}
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

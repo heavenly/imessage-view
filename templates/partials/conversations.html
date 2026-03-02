@@ -1,0 +1,24 @@
+{% if conversations.is_empty() %}
+<p>No conversations found.</p>
+{% else %}
+<table role="grid">
+    <thead>
+        <tr>
+            <th>Name</th>
+            <th>Last Message</th>
+            <th>When</th>
+            <th>Messages</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for c in conversations %}
+        <tr>
+            <td><a href="/conversations/{{ c.id }}">{{ c.name }}</a></td>
+            <td>{{ c.last_preview }}</td>
+            <td>{{ c.relative_date }}</td>
+            <td><span class="badge">{{ c.message_count }}</span></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}

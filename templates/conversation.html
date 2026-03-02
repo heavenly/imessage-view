@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="conversation-header">
+    <a href="/" class="back-link">&larr; Conversations</a>
+    <h1>{{ contact_name }}</h1>
+    {% if is_group %}
+    <p class="participants">{{ participants.join(", ") }}</p>
+    {% endif %}
+</div>
+<div id="messages-list"
+     class="messages-container"
+     hx-get="/partials/messages?conversation_id={{ conversation_id }}"
+     hx-trigger="load"
+     hx-swap="innerHTML">
+    <p aria-busy="true">Loading messages&hellip;</p>
+</div>
+{% endblock %}

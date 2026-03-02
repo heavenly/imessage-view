@@ -1,0 +1,22 @@
+=== Scenario: All routes return 200 ===
+Date: Sun Mar  1 14:58:38 PST 2026
+
+GET /:
+  HTTP 200
+GET /search:
+  HTTP 200
+GET /attachments:
+  HTTP 200
+GET /analytics:
+  HTTP 200
+GET /conversations/1:
+  HTTP 200
+GET /attachments/download/1:
+  HTTP 200
+GET /partials/messages:
+  HTTP 200
+GET /partials/conversations:
+  HTTP 200
+GET /partials/search-results:
+  HTTP 200
+PASS: All routes return 200

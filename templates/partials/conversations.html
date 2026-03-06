@@ -1,23 +1,25 @@
 {% if conversations.is_empty() %}
-<p class="empty-state">No conversations found.</p>
-{% else %}
-<div class="conversation-list">
-    {% for c in conversations %}
-    <a href="/conversations/{{ c.id }}" class="conversation-card">
-        <div class="avatar{% if c.is_group %} group{% endif %}">
-            {% if c.is_group %}👥{% else %}{{ c.name.chars().next().unwrap_or('?') }}{% endif %}
-        </div>
-        <div class="card-content">
-            <div class="card-top">
-                <span class="card-name">{{ c.name }}</span>
-                <span class="card-time">{{ c.relative_date }}</span>
-            </div>
-            <div class="card-bottom">
-                <span class="card-preview">{{ c.last_preview }}</span>
-                <span class="card-badge">{{ c.message_count }}</span>
-            </div>
-        </div>
-    </a>
-    {% endfor %}
+<div class="im-empty-list">
+    <p>No conversations found.</p>
 </div>
+{% else %}
+{% for c in conversations %}
+<a href="/conversations/{{ c.id }}" class="im-conversation-item">
+    <div class="im-avatar{% if c.is_group %} im-avatar--group{% endif %}">
+        {% if c.is_group %}👥{% else %}{{ c.name.chars().next().unwrap_or('?') }}{% endif %}
+    </div>
+    <div class="im-conversation-content">
+        <div class="im-conversation-top">
+            <span class="im-conversation-name">{{ c.name }}</span>
+            <span class="im-conversation-time">{{ c.relative_date }}</span>
+        </div>
+        <div class="im-conversation-bottom">
+            <span class="im-conversation-preview">{{ c.last_preview }}</span>
+            {% if c.message_count > 0 %}
+            <span class="im-conversation-badge">{{ c.message_count }}</span>
+            {% endif %}
+        </div>
+    </div>
+</a>
+{% endfor %}
 {% endif %}

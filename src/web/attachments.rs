@@ -19,12 +19,19 @@ pub async fn download(
 
     let attachment = attachment.ok_or(StatusCode::NOT_FOUND)?;
 
-    if !attachment.file_exists {
+    let file_path = if attachment.file_exists {
+        attachment.resolved_path.as_deref().ok_or(StatusCode::NOT_FOUND)?
+    } else if let Some(backup_path) = &attachment.backup_source_path {
+        if std::path::Path::new(backup_path).exists() {
+            backup_path.as_str()
+        } else {
+            return Err(StatusCode::NOT_FOUND);
+        }
+    } else {
         return Err(StatusCode::NOT_FOUND);
-    }
+    };
 
-    let resolved = attachment.resolved_path.as_deref().ok_or(StatusCode::NOT_FOUND)?;
-    let path = std::path::Path::new(resolved);
+    let path = std::path::Path::new(file_path);
 
     if !path.exists() {
         return Err(StatusCode::NOT_FOUND);

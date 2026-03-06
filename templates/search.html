@@ -1,23 +1,48 @@
 {% extends "base.html" %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-<h1>Search Messages</h1>
-<input type="search"
-       name="q"
-       placeholder="Search messages…"
-       value="{{ query.as_deref().unwrap_or_default() }}"
-       hx-get="/partials/search-results"
-       hx-trigger="keyup changed delay:300ms, search"
-       hx-target="#search-results"
-       hx-swap="innerHTML"
-       hx-indicator="#search-spinner"
-       autofocus>
-<span id="search-spinner" class="htmx-indicator" aria-busy="true">Searching…</span>
-<div id="search-results">
-    {% if query.is_some() %}
-    <p>Loading results…</p>
-    {% else %}
-    <p>Enter a search query above.</p>
-    {% endif %}
+<div class="im-sidebar">
+    <div class="im-sidebar-header">
+        <h1>iMessage</h1㸬
+        <input type="search"
+               name="filter"
+               class="im-search"
+               placeholder="Search"
+               hx-get="/"
+               hx-trigger="input changed delay:300ms, search"
+               hx-target="#conversations-list"
+               hx-swap="innerHTML"
+               hx-push-url="false">
+    </div>
+    <div id="conversations-list" class="im-conversation-list">
+        <!-- Conversation list would be loaded here -->
+    </div>
+</div>
+<div class="im-main">
+    <div class="im-search-container" style="padding: 20px; max-width: 600px; margin: 0 auto;">
+        <h1 style="font-size: 24px; margin-bottom: 20px;">Search Messages</h1>
+        <input type="search"
+               name="q"
+               class="im-search"
+               style="width: 100%; margin-bottom: 16px;"
+               placeholder="Search messages…"
+               value="{{ query.as_deref().unwrap_or_default() }}"
+               hx-get="/partials/search-results"
+               hx-trigger="keyup changed delay:300ms, search"
+               hx-target="#search-results"
+               hx-swap="innerHTML"
+               hx-indicator="#search-spinner"
+               autofocus>
+        
+        <span id="search-spinner" class="htmx-indicator" style="display: none; color: var(--im-text-secondary);">Searching…</span>
+        
+        <div id="search-results" style="margin-top: 20px;">
+            {% if query.is_some() %}
+            <p style="color: var(--im-text-secondary);">Loading results…</p>
+            {% else %}
+            <p style="color: var(--im-text-secondary);">Enter a search query above.</p>
+            {% endif %}
+        </div>
+    </div>
 </div>
 {% endblock %}

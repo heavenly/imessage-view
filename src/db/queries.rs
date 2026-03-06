@@ -379,6 +379,8 @@ pub struct AttachmentRow {
     pub conversation_name: Option<String>,
     pub message_date: Option<i64>,
     pub conversation_id: Option<i64>,
+    pub ck_sync_state: i64,
+    pub backup_source_path: Option<String>,
 }
 
 impl AttachmentRow {
@@ -453,7 +455,9 @@ pub fn list_attachments(
                 a.file_exists, a.transfer_name,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
                 m.date_unix,
-                c.id AS conversation_id
+                c.id AS conversation_id,
+                a.ck_sync_state,
+                a.backup_source_path
          FROM attachments a
          JOIN messages m ON m.id = a.message_id
          JOIN conversations c ON c.id = m.conversation_id
@@ -477,6 +481,8 @@ pub fn list_attachments(
                 conversation_name: row.get(7)?,
                 message_date: row.get(8)?,
                 conversation_id: row.get(9)?,
+                ck_sync_state: row.get(10)?,
+                backup_source_path: row.get(11)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -490,7 +496,9 @@ pub fn get_attachment(conn: &Connection, id: i64) -> anyhow::Result<Option<Attac
                 a.file_exists, a.transfer_name,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
                 m.date_unix,
-                c.id AS conversation_id
+                c.id AS conversation_id,
+                a.ck_sync_state,
+                a.backup_source_path
          FROM attachments a
          JOIN messages m ON m.id = a.message_id
          JOIN conversations c ON c.id = m.conversation_id
@@ -510,6 +518,8 @@ pub fn get_attachment(conn: &Connection, id: i64) -> anyhow::Result<Option<Attac
                 conversation_name: row.get(7)?,
                 message_date: row.get(8)?,
                 conversation_id: row.get(9)?,
+                ck_sync_state: row.get(10)?,
+                backup_source_path: row.get(11)?,
             })
         })
         .optional()?;
@@ -554,7 +564,9 @@ pub fn conversation_attachments(
                 a.file_exists, a.transfer_name,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
                 m.date_unix,
-                c.id AS conversation_id
+                c.id AS conversation_id,
+                a.ck_sync_state,
+                a.backup_source_path
          FROM attachments a
          JOIN messages m ON m.id = a.message_id
          JOIN conversations c ON c.id = m.conversation_id
@@ -577,6 +589,8 @@ pub fn conversation_attachments(
                 conversation_name: row.get(7)?,
                 message_date: row.get(8)?,
                 conversation_id: row.get(9)?,
+                ck_sync_state: row.get(10)?,
+                backup_source_path: row.get(11)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -594,4 +608,85 @@ pub fn count_conversation_attachments(conn: &Connection, conversation_id: i64) -
         |r| r.get(0),
     )?;
     Ok(count)
+}
+
+
+pub fn count_missing_attachments(conn: &Connection) -> anyhow::Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM attachments WHERE file_exists = 0",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(Into::into)
+}
+
+pub fn count_missing_icloud_attachments(conn: &Connection) -> anyhow::Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM attachments WHERE file_exists = 0 AND ck_sync_state = 1",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(Into::into)
+}
+
+pub fn count_missing_with_backup(conn: &Connection) -> anyhow::Result<i64> {
+    conn.query_row(
+        "SELECT COUNT(*) FROM attachments WHERE file_exists = 0 AND backup_source_path IS NOT NULL",
+        [],
+        |r| r.get(0),
+    )
+    .map_err(Into::into)
+}
+
+pub fn get_missing_attachments(
+    conn: &Connection,
+    offset: i64,
+    limit: i64,
+) -> anyhow::Result<Vec<AttachmentRow>> {
+    let sql = format!(
+        "SELECT a.id, a.filename, a.mime_type, a.total_bytes, a.resolved_path,
+                a.file_exists, a.transfer_name,
+                COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
+                m.date_unix,
+                c.id AS conversation_id,
+                a.ck_sync_state,
+                a.backup_source_path
+         FROM attachments a
+         JOIN messages m ON m.id = a.message_id
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE a.file_exists = 0
+         ORDER BY m.date_unix DESC
+         LIMIT {limit} OFFSET {offset}"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(AttachmentRow {
+                id: row.get(0)?,
+                filename: row.get(1)?,
+                mime_type: row.get(2)?,
+                total_bytes: row.get(3)?,
+                resolved_path: row.get(4)?,
+                file_exists: row.get(5)?,
+                transfer_name: row.get(6)?,
+                conversation_name: row.get(7)?,
+                message_date: row.get(8)?,
+                conversation_id: row.get(9)?,
+                ck_sync_state: row.get(10)?,
+                backup_source_path: row.get(11)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
+pub fn update_attachment_backup_source(conn: &Connection, id: i64, backup_path: &str) -> anyhow::Result<()> {
+    conn.execute(
+        "UPDATE attachments SET backup_source_path = ?1 WHERE id = ?2",
+        rusqlite::params![backup_path, id],
+    )?;
+    Ok(())
 }

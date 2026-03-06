@@ -34,6 +34,12 @@
             <span class="stat-label">Other</span>
         </a>
     </div>
+
+<div class="sync-filter-tabs" style="margin-bottom: 1rem;">
+    <a href="/attachments?filter={{ filter }}" class="btn {% if sync_filter == "" %}active{% endif %}">All</a>
+    <a href="/attachments?filter={{ filter }}&sync=local" class="btn {% if sync_filter == "local" %}active{% endif %}">Local</a>
+    <a href="/attachments?filter={{ filter }}&sync=icloud" class="btn {% if sync_filter == "icloud" %}active{% endif %}">iCloud</a>
+    <a href="/attachments?filter={{ filter }}&sync=missing" class="btn {% if sync_filter == "missing" %}active{% endif %}">Missing</a>
 </div>
 
 {% if attachments.is_empty() %}
@@ -42,6 +48,12 @@
 <div class="attachments-grid">
     {% for a in attachments %}
     <div class="attachment-card{% if !a.file_exists %} missing{% endif %}">
+        <div class="sync-badge {{ a.sync_status }}" title="Sync status">
+            {% if a.sync_status == "local" %}🟢 Local{% endif %}
+            {% if a.sync_status == "icloud" %}☁️ iCloud{% endif %}
+            {% if a.sync_status == "pending" %}⏳ Pending{% endif %}
+            {% if a.sync_status == "error" %}❌ Error{% endif %}
+        </div>
         <div class="attachment-preview">
             {% if a.is_image %}
             <div class="image-placeholder">📷</div>
@@ -55,9 +67,19 @@
         </div>
         <div class="attachment-info">
             <div class="attachment-name" title="{{ a.display_name }}">
+                {% if a.is_image %}
+                <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'image', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="image" data-url="/attachments/download/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
+                    {{ a.display_name }}
+                </a>
+                {% else if a.mime_category == "video" %}
+                <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'video', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="video" data-url="/attachments/download/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
+                    {{ a.display_name }}
+                </a>
+                {% else %}
                 <a href="/attachments/download/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
                     {{ a.display_name }}
                 </a>
+                {% endif %}
             </div>
             <div class="attachment-meta">
                 <span class="attachment-size">{{ a.size }}</span>
@@ -93,4 +115,67 @@
 </div>
 {% endif %}
 {% endif %}
+<!-- Media Preview Modal -->
+<div id="media-preview-modal" class="modal-overlay" style="display: none;" onclick="closePreview(event)">
+    <div class="modal-content" onclick="event.stopPropagation()">
+        <button class="modal-close" onclick="closePreview(event)">&times;</button>
+        <div id="modal-body"></div>
+        <div class="modal-footer">
+            <a id="modal-download-btn" href="#" class="btn btn-secondary" download>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 0.5rem;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                Download
+            </a>
+        </div>
+    </div>
+</div>
+
+<script>
+if (typeof window.openPreview === 'undefined') {
+    window.openPreview = function(id, type, url) {
+        const modal = document.getElementById('media-preview-modal');
+        const body = document.getElementById('modal-body');
+        const downloadBtn = document.getElementById('modal-download-btn');
+        
+        body.innerHTML = '';
+        downloadBtn.href = url;
+        downloadBtn.setAttribute('download', '');
+        
+        if (type === 'image') {
+            const img = document.createElement('img');
+            img.src = url;
+            img.style.maxWidth = '100%';
+            img.style.maxHeight = '70vh';
+            img.style.objectFit = 'contain';
+            body.appendChild(img);
+        } else if (type === 'video') {
+            const video = document.createElement('video');
+            video.src = url;
+            video.controls = true;
+            video.autoplay = true;
+            video.style.maxWidth = '100%';
+            video.style.maxHeight = '70vh';
+            body.appendChild(video);
+        }
+        
+        modal.style.display = 'flex';
+        document.body.style.overflow = 'hidden';
+    };
+
+    window.closePreview = function(event) {
+        if (event) event.preventDefault();
+        const modal = document.getElementById('media-preview-modal');
+        const body = document.getElementById('modal-body');
+        
+        if (modal) modal.style.display = 'none';
+        if (body) body.innerHTML = ''; // clear content to stop video playing
+        document.body.style.overflow = '';
+    };
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            window.closePreview();
+        }
+    });
+}
+</script>
 {% endblock %}

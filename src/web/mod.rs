@@ -1,6 +1,7 @@
 pub mod attachments;
 pub mod pages;
 pub mod partials;
+pub mod recovery;
 
 use axum::routing::get;
 use axum::Router;
@@ -16,6 +17,7 @@ pub fn router() -> Router<AppState> {
         .route("/attachments", get(pages::attachments_page))
         .route("/attachments/download/{id}", get(attachments::download))
         .route("/analytics", get(pages::analytics))
+        .route("/recovery", get(recovery::recovery_page))
         .route("/partials/messages", get(partials::messages_partial))
         .route("/partials/conversations", get(partials::conversations_partial))
         .route("/partials/search-results", get(partials::search_results_partial))

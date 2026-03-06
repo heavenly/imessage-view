@@ -17,6 +17,10 @@ struct AttachmentRow {
     transfer_name: Option<String>,
     total_bytes: Option<i64>,
     file_exists: bool,
+    ck_sync_state: i64,
+    ck_record_id: Option<String>,
+    is_sticker: bool,
+    hide_attachment: bool,
 }
 
 pub fn import_attachments(source_db: &Path, port_db: &mut Connection) -> Result<()> {
@@ -37,6 +41,7 @@ pub fn import_attachments(source_db: &Path, port_db: &mut Connection) -> Result<
     let mut stmt = source_conn
         .prepare(
             "SELECT a.rowid, a.guid, a.filename, a.mime_type, a.uti, a.transfer_name, a.total_bytes,
+                    COALESCE(a.ck_sync_state, 0), a.ck_record_id, a.is_sticker, a.hide_attachment,
                     maj.message_id
              FROM message_attachment_join maj
              JOIN attachment a ON maj.attachment_id = a.rowid",
@@ -54,6 +59,10 @@ pub fn import_attachments(source_db: &Path, port_db: &mut Connection) -> Result<
                 row.get::<_, Option<String>>(5)?,
                 row.get::<_, Option<i64>>(6)?,
                 row.get::<_, i64>(7)?,
+                row.get::<_, Option<String>>(8)?,
+                row.get::<_, bool>(9)?,
+                row.get::<_, bool>(10)?,
+                row.get::<_, i64>(11)?,
             ))
         })
         .map_err(|_| Error)?;
@@ -62,7 +71,7 @@ pub fn import_attachments(source_db: &Path, port_db: &mut Connection) -> Result<
 
     for row_result in rows {
         progress.inc(1);
-        let (apple_id, guid, filename, mime_type, uti, transfer_name, total_bytes, source_msg_id) =
+        let (apple_id, guid, filename, mime_type, uti, transfer_name, total_bytes, ck_sync_state, ck_record_id, is_sticker, hide_attachment, source_msg_id) =
             row_result.map_err(|_| Error)?;
 
         let message_id = match message_id_map.get(&source_msg_id) {
@@ -83,6 +92,10 @@ pub fn import_attachments(source_db: &Path, port_db: &mut Connection) -> Result<
             transfer_name,
             total_bytes,
             file_exists,
+            ck_sync_state,
+            ck_record_id,
+            is_sticker,
+            hide_attachment,
         });
 
         if batch.len() >= 5000 {
@@ -148,8 +161,8 @@ fn insert_attachment_batch(port_db: &mut Connection, batch: &[AttachmentRow]) ->
         let mut stmt = tx
             .prepare_cached(
                 "INSERT OR REPLACE INTO attachments
-                    (message_id, apple_attachment_id, guid, filename, resolved_path, mime_type, uti, transfer_name, total_bytes, file_exists)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    (message_id, apple_attachment_id, guid, filename, resolved_path, mime_type, uti, transfer_name, total_bytes, file_exists, ck_sync_state, ck_record_id, is_sticker, hide_attachment)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
             )
             .map_err(|_| Error)?;
 
@@ -165,6 +178,10 @@ fn insert_attachment_batch(port_db: &mut Connection, batch: &[AttachmentRow]) ->
                 row.transfer_name.as_deref(),
                 row.total_bytes,
                 row.file_exists,
+                row.ck_sync_state,
+                row.ck_record_id.as_deref(),
+                row.is_sticker,
+                row.hide_attachment,
             ))
             .map_err(|_| Error)?;
         }

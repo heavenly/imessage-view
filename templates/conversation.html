@@ -1,41 +1,84 @@
 {% extends "base.html" %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-
-<div class="conversation-header-bar">
-    <a href="/" class="back-link">&larr;</a>
-    <div class="header-avatar{% if is_group %} group{% endif %}">
-        {% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}
+<!-- Sidebar stays the same as index -->
+<div class="im-sidebar">
+    <div class="im-sidebar-header">
+        <div class="im-header-row">
+            <a href="/" class="im-back-btn">←</a>
+            <h1>iMessage</h1>
+        </div>
+        <input type="search"
+               name="filter"
+               class="im-search"
+               placeholder="Search"
+               hx-get="/"
+               hx-trigger="input changed delay:300ms, search"
+               hx-target="#conversations-list"
+               hx-swap="innerHTML"
+               hx-push-url="false">
     </div>
-    <div class="header-info">
-        <h1 class="header-name">{{ contact_name }}</h1>
-        {% if is_group %}
-        <p class="header-participants">{{ participants.join(", ") }}</p>
-        {% endif %}
+    <div id="conversations-list" class="im-conversation-list">
+        <!-- Conversation list loaded via HTMX or include -->
     </div>
 </div>
 
-<div class="tab-bar">
-    <button class="tab active" 
-            hx-get="/partials/messages?conversation_id={{ conversation_id }}"
-            hx-target="#tab-content"
-            hx-swap="innerHTML"
-            hx-trigger="load, click"
-            onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">
-        Messages
-    </button>
-    <button class="tab"
-            hx-get="/partials/conversation-attachments?conversation_id={{ conversation_id }}"
-            hx-target="#tab-content"
-            hx-swap="innerHTML"
-            onclick="document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">
-        Attachments
-        <span class="tab-count">({{ attachment_count }})</span>
-    </button>
+<div class="im-main im-chat-container">
+    <!-- Conversation Header -->
+    <header class="im-chat-header">
+        <div class="im-chat-header-info">
+            <div class="im-avatar{% if is_group %} im-avatar--group{% endif %}">
+                {% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}
+            </div>
+            <div class="im-chat-header-text">
+                <h2 class="im-chat-header-name">{{ contact_name }}</h2>
+                {% if is_group %}
+                <p class="im-chat-header-participants">{{ participants.join(", ") }}</p>
+                {% else %}
+                <p class="im-chat-header-status"></p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="im-chat-header-actions">
+            <button class="im-header-btn" title="Info">ℹ️</button>
+        </div>
+    </header>
+    
+    <!-- Tab Bar -->
+    <div class="im-tab-bar">
+        <button class="im-tab active" 
+                hx-get="/partials/messages?conversation_id={{ conversation_id }}"
+                hx-target="#tab-content"
+                hx-swap="innerHTML"
+                hx-trigger="load, click"
+                onclick="document.querySelectorAll('.im-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">
+            Messages
+        </button>
+        <button class="im-tab"
+                hx-get="/partials/conversation-attachments?conversation_id={{ conversation_id }}"
+                hx-target="#tab-content"
+                hx-swap="innerHTML"
+                onclick="document.querySelectorAll('.im-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">
+            Attachments
+            <span class="im-tab-count">{{ attachment_count }}</span>
+        </button>
+    </div>
+    
+    <!-- Content Area -->
+    <div id="tab-content" class="im-chat-content">
+        <div class="im-loading">
+            <span class="im-spinner"></span>
+            <p>Loading messages...</p>
+        </div>
+    </div>
+    
+    <!-- Input Bar (Visual only for now) -->
+    <div class="im-input-bar">
+        <button class="im-input-btn">📷</button>
+        <div class="im-input-field">
+            <input type="text" placeholder="iMessage" disabled>
+        </div>
+        <button class="im-input-btn im-send-btn" disabled>➤</button>
+    </div>
 </div>
-
-<div id="tab-content" class="tab-content">
-    <p aria-busy="true">Loading...</p>
-</div>
-
 {% endblock %}

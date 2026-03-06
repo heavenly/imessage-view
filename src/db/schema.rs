@@ -60,7 +60,12 @@ CREATE TABLE IF NOT EXISTS attachments (
     uti TEXT,
     transfer_name TEXT,
     total_bytes INTEGER,
-    file_exists BOOLEAN DEFAULT FALSE
+    file_exists BOOLEAN DEFAULT FALSE,
+    ck_sync_state INTEGER DEFAULT 0,
+    ck_record_id TEXT,
+    is_sticker BOOLEAN DEFAULT FALSE,
+    hide_attachment BOOLEAN DEFAULT FALSE,
+    backup_source_path TEXT
 );";
 
 pub const CREATE_MESSAGES_FTS: &str = "

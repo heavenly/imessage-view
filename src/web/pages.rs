@@ -190,6 +190,7 @@ pub async fn search(
 #[derive(Deserialize)]
 pub struct AttachmentsQuery {
     pub filter: Option<String>,
+    pub sync: Option<String>,
     pub page: Option<u32>,
 }
 
@@ -208,6 +209,7 @@ struct AttachmentsTemplate {
     video_count: i64,
     audio_count: i64,
     other_count: i64,
+    sync_filter: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -222,6 +224,7 @@ struct AttachmentView {
     pub conversation_id: Option<i64>,
     pub date: String,
     pub is_image: bool,
+    pub sync_status: String,
 }
 pub async fn attachments_page(
     State(state): State<AppState>,
@@ -261,6 +264,12 @@ pub async fn attachments_page(
             conversation_id: a.conversation_id,
             date: a.date_formatted(),
             is_image: a.mime_type.as_deref().map(|m| m.starts_with("image/")).unwrap_or(false),
+            sync_status: match a.ck_sync_state {
+                0 => "local".to_string(),
+                1 => "icloud".to_string(),
+                2 => "pending".to_string(),
+                _ => "error".to_string(),
+            },
         })
         .collect();
     
@@ -277,6 +286,7 @@ pub async fn attachments_page(
         video_count,
         audio_count,
         other_count,
+        sync_filter: params.sync.clone().unwrap_or_default(),
     };
     
     Html(t.render().unwrap_or_default())

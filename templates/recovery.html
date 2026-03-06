@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+
+<h1>Attachment Recovery</h1>
+
+<div class="recovery-stats">
+    <div class="stat-box">
+        <span class="stat-number">{{ total_missing }}</span>
+        <span class="stat-label">Missing Attachments</span>
+    </div>
+    <div class="stat-box">
+        <span class="stat-number">{{ icloud_count }}</span>
+        <span class="stat-label">Available in iCloud</span>
+    </div>
+    <div class="stat-box">
+        <span class="stat-number">{{ backup_count }}</span>
+        <span class="stat-label">Found in Backup</span>
+    </div>
+</div>
+
+<div class="recovery-actions">
+    <a href="/recovery/scan" class="btn btn-primary">Scan iOS Backup</a>
+</div>
+
+<div class="attachments-grid">
+    {% for a in attachments %}
+    <div class="attachment-card">
+        <div class="attachment-preview">📎</div>
+        <div class="attachment-info">
+            <div class="attachment-name">{{ a.display_name }}</div>
+            <div class="attachment-meta">{{ a.size }} • {{ a.date }}</div>
+            {% if a.conversation_id.is_some() %}
+            <div class="attachment-conversation">
+                <a href="/conversations/{{ a.conversation_id.unwrap() }}">{{ a.conversation_name.as_deref().unwrap_or("Unknown") }}</a>
+            </div>
+            {% endif %}
+            <div class="recovery-status">
+                {% if a.sync_status == "icloud" %}☁️ Available in iCloud{% endif %}
+                {% if a.sync_status == "pending" %}⏳ Upload Pending{% endif %}
+                {% if a.sync_status == "error" %}❌ Sync Error{% endif %}
+                {% if a.has_backup %}💾 Found in Backup{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if total_pages > 1 %}
+<div class="pagination">
+    {% if has_prev %}
+    <a href="/recovery?page={{ page - 1 }}" class="btn">← Previous</a>
+    {% endif %}
+    <span>Page {{ page }} of {{ total_pages }}</span>
+    {% if has_next %}
+    <a href="/recovery?page={{ page + 1 }}" class="btn">Next →</a>
+    {% endif %}
+</div>
+{% endif %}
+
+{% endblock %}

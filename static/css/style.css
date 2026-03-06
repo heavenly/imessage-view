@@ -371,67 +371,6 @@ body {
     to { transform: rotate(360deg); }
 }
 
-/* Input Bar */
-.im-input-bar {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 20px;
-    border-top: 1px solid var(--im-border);
-    background: var(--im-bg-primary);
-    flex-shrink: 0;
-}
-
-.im-input-btn {
-    background: none;
-    border: none;
-    padding: 8px;
-    cursor: pointer;
-    border-radius: 50%;
-    font-size: 20px;
-    opacity: 0.6;
-    transition: all 0.15s;
-    flex-shrink: 0;
-}
-
-.im-input-btn:hover:not(:disabled) {
-    opacity: 1;
-    background: var(--im-bg-secondary);
-}
-
-.im-input-btn:disabled {
-    opacity: 0.3;
-    cursor: not-allowed;
-}
-
-.im-input-field {
-    flex: 1;
-}
-
-.im-input-field input {
-    width: 100%;
-    padding: 10px 16px;
-    border: 1px solid var(--im-border);
-    border-radius: 18px;
-    background: var(--im-bg-secondary);
-    font-size: 14px;
-    outline: none;
-}
-
-.im-input-field input:focus {
-    border-color: var(--im-accent);
-    background: var(--im-bg-primary);
-}
-
-.im-send-btn {
-    background: var(--im-accent) !important;
-    color: white;
-    opacity: 1 !important;
-}
-
-.im-send-btn:disabled {
-    opacity: 0.3 !important;
-}
 /* Message Groups */
 .im-message-group {
     display: flex;
@@ -476,67 +415,47 @@ body {
 .im-message-group--sent .im-message-bubble {
     background: var(--im-bubble-sent-bg);
     color: var(--im-text-inverse);
-    border-bottom-right-radius: 4px;
 }
 
 /* Received Messages (Gray) */
 .im-message-group--received .im-message-bubble {
     background: var(--im-bubble-received-bg);
     color: var(--im-text-primary);
+}
+
+/* SENT: last message sharp bottom-right for tail */
+.im-message-group--sent .im-message:last-child .im-message-bubble {
+    border-bottom-right-radius: 4px;
+}
+
+/* RECEIVED: last message sharp bottom-left for tail */
+.im-message-group--received .im-message:last-child .im-message-bubble {
     border-bottom-left-radius: 4px;
 }
 
-/* Bubble Tails using CSS */
+/* Bubble Tails - only on last message in group */
 .im-message-group--sent .im-message:last-child .im-message-bubble::after {
     content: '';
     position: absolute;
     bottom: 0;
-    right: -8px;
-    width: 16px;
-    height: 16px;
-    background: inherit;
-    border-bottom-left-radius: 14px;
-    clip-path: polygon(0 0, 0% 100%, 100% 100%);
+    right: -6px;
+    width: 12px;
+    height: 18px;
+    background: var(--im-bubble-sent-bg);
+    border-bottom-left-radius: 16px;
+    z-index: -1;
 }
 
 .im-message-group--received .im-message:last-child .im-message-bubble::after {
     content: '';
     position: absolute;
     bottom: 0;
-    left: -8px;
-    width: 16px;
-    height: 16px;
-    background: inherit;
-    border-bottom-right-radius: 14px;
-    clip-path: polygon(100% 0, 0% 100%, 100% 100%);
-}
-
-/* First/Last message in group - full radius except tail side */
-.im-message-group .im-message:first-child .im-message-bubble {
-    border-radius: 18px 18px 18px 4px;
-}
-
-.im-message-group .im-message:last-child .im-message-bubble {
-    border-radius: 4px 18px 18px 18px;
-}
-
-.im-message-group--sent .im-message:first-child .im-message-bubble {
-    border-radius: 18px 18px 4px 18px;
-}
-
-.im-message-group--sent .im-message:last-child .im-message-bubble {
-    border-radius: 18px 4px 18px 18px;
-    border-bottom-right-radius: 4px;
-}
-
-.im-message-group--sent .im-message:first-child:last-child .im-message-bubble {
-    border-radius: 18px;
-    border-bottom-right-radius: 4px;
-}
-
-.im-message-group--received .im-message:first-child:last-child .im-message-bubble {
-    border-radius: 18px;
-    border-bottom-left-radius: 4px;
+    left: -6px;
+    width: 12px;
+    height: 18px;
+    background: var(--im-bubble-received-bg);
+    border-bottom-right-radius: 16px;
+    z-index: -1;
 }
 
 /* Sender Name (for group chats) */
@@ -565,12 +484,6 @@ body {
 
 .im-message-group .im-message:not(:last-child) .im-message-time {
     display: none;
-}
-    display: block;
-    font-size: 11px;
-    margin-top: 4px;
-    opacity: 0.7;
-    text-align: right;
 }
 
 /* Date Separators */

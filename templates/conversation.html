@@ -18,8 +18,8 @@
                hx-swap="innerHTML"
                hx-push-url="false">
     </div>
-    <div id="conversations-list" class="im-conversation-list">
-        <!-- Conversation list loaded via HTMX or include -->
+    <div id="conversations-list" class="im-conversation-list" hx-get="/partials/conversations" hx-trigger="load">
+        <p>Loading...</p>
     </div>
 </div>
 
@@ -72,13 +72,5 @@
         </div>
     </div>
     
-    <!-- Input Bar (Visual only for now) -->
-    <div class="im-input-bar">
-        <button class="im-input-btn">📷</button>
-        <div class="im-input-field">
-            <input type="text" placeholder="iMessage" disabled>
-        </div>
-        <button class="im-input-btn im-send-btn" disabled>➤</button>
-    </div>
 </div>
 {% endblock %}

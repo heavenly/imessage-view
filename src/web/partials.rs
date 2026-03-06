@@ -28,6 +28,12 @@ struct MessageView {
     attachments: Vec<AttachmentView>,
 }
 
+struct MessageGroup {
+    is_from_me: bool,
+    date_separator: Option<String>,
+    messages: Vec<MessageView>,
+}
+
 struct AttachmentView {
     id: i64,
     mime_type: Option<String>,
@@ -38,10 +44,11 @@ struct AttachmentView {
 #[derive(Template)]
 #[template(path = "partials/messages.html")]
 struct MessagesPartialTemplate {
-    messages: Vec<MessageView>,
+    groups: Vec<MessageGroup>,
     conversation_id: i64,
     page: u32,
     has_more: bool,
+    is_empty: bool,
 }
 
 const MESSAGES_PER_PAGE: u32 = 50;
@@ -63,7 +70,7 @@ pub async fn messages_partial(
     let message_ids: Vec<i64> = rows.iter().filter(|m| m.has_attachments).map(|m| m.id).collect();
     let mut att_map = queries::get_message_attachments(&conn, &message_ids).unwrap_or_default();
 
-    let messages: Vec<MessageView> = rows
+    let mut messages: Vec<MessageView> = rows
         .into_iter()
         .map(|m| {
             let dt = DateTime::from_timestamp(m.date_unix, 0);
@@ -98,11 +105,43 @@ pub async fn messages_partial(
         })
         .collect();
 
+    // Reverse: query is DESC for pagination, but display needs oldest first
+    messages.reverse();
+
+    // Group consecutive messages by sender and date
+    let is_empty = messages.is_empty();
+    let mut groups: Vec<MessageGroup> = Vec::new();
+    let mut last_date = String::new();
+    let mut last_is_from_me: Option<bool> = None;
+
+    for msg in messages {
+        let date_changed = msg.date_formatted != last_date;
+        let sender_changed = last_is_from_me != Some(msg.is_from_me);
+
+        if date_changed || sender_changed {
+            let date_separator = if date_changed {
+                Some(msg.date_formatted.clone())
+            } else {
+                None
+            };
+            last_date = msg.date_formatted.clone();
+            last_is_from_me = Some(msg.is_from_me);
+            groups.push(MessageGroup {
+                is_from_me: msg.is_from_me,
+                date_separator,
+                messages: vec![msg],
+            });
+        } else {
+            groups.last_mut().unwrap().messages.push(msg);
+        }
+    }
+
     let t = MessagesPartialTemplate {
-        messages,
+        groups,
         conversation_id,
         page,
         has_more,
+        is_empty,
     };
     Html(t.render().unwrap_or_default())
 }

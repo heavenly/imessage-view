@@ -113,10 +113,15 @@ pub async fn messages_partial(
     let mut groups: Vec<MessageGroup> = Vec::new();
     let mut last_date = String::new();
     let mut last_is_from_me: Option<bool> = None;
+    let mut last_sender_name: Option<String> = None;
 
     for msg in messages {
         let date_changed = msg.date_formatted != last_date;
-        let sender_changed = last_is_from_me != Some(msg.is_from_me);
+        let sender_changed = if msg.is_from_me {
+            last_is_from_me != Some(true)
+        } else {
+            last_is_from_me != Some(false) || last_sender_name.as_ref() != msg.sender_name.as_ref()
+        };
 
         if date_changed || sender_changed {
             let date_separator = if date_changed {
@@ -126,6 +131,7 @@ pub async fn messages_partial(
             };
             last_date = msg.date_formatted.clone();
             last_is_from_me = Some(msg.is_from_me);
+            last_sender_name = msg.sender_name.clone();
             groups.push(MessageGroup {
                 is_from_me: msg.is_from_me,
                 date_separator,

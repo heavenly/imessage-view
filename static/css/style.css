@@ -3,9 +3,9 @@
   --im-bg-secondary: #f5f5f7;
   --im-bg-tertiary: #e8e8ed;
   --im-bubble-sent: #007aff;
-  --im-bubble-sent-bg: linear-gradient(180deg, #007aff 0%, #0051d5 100%);
+  --im-bubble-sent-bg: #007aff;
   --im-bubble-received: #e5e5ea;
-  --im-bubble-received-bg: linear-gradient(180deg, #f2f2f7 0%, #e5e5ea 100%);
+  --im-bubble-received-bg: #e5e5ea;
   --im-text-primary: #000000;
   --im-text-secondary: #8e8e93;
   --im-text-tertiary: #c7c7cc;

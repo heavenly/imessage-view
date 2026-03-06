@@ -595,3 +595,248 @@ body {
   display: flex;
   flex-direction: column;
 }
+
+/* Attachments Grid */
+.attachments-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+  padding: 1rem 0;
+}
+
+.attachment-card {
+  background: var(--im-bg-secondary);
+  border-radius: 12px;
+  overflow: hidden;
+  transition: transform 0.2s, box-shadow 0.2s;
+  display: flex;
+  flex-direction: column;
+}
+
+.attachment-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.attachment-card.missing {
+  opacity: 0.6;
+}
+
+.attachment-preview {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--im-bg-tertiary);
+  font-size: 48px;
+}
+
+.attachment-info {
+  padding: 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attachment-name {
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-name a {
+  color: var(--im-text-primary);
+  text-decoration: none;
+}
+
+.attachment-name a:hover {
+  color: var(--im-accent);
+}
+
+.attachment-meta {
+  display: flex;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--im-text-secondary);
+}
+
+.attachment-conversation {
+  font-size: 11px;
+}
+
+.attachment-conversation a {
+  color: var(--im-accent);
+  text-decoration: none;
+}
+
+.sync-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-size: 10px;
+  font-weight: 500;
+  background: var(--im-bg-primary);
+}
+
+.attachment-card {
+  position: relative;
+}
+
+.sync-badge.local {
+  color: var(--im-green);
+}
+
+.sync-badge.icloud {
+  color: var(--im-accent);
+}
+
+.sync-badge.pending {
+  color: #ff9500;
+}
+
+.sync-badge.error {
+  color: #ff3b30;
+}
+
+.missing-file {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+/* Attachments Stats */
+.attachments-stats {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.stat-box {
+  flex: 1;
+  min-width: 100px;
+  max-width: 150px;
+}
+
+.stat-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1rem;
+  background: var(--im-bg-secondary);
+  border-radius: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.2s;
+}
+
+.stat-link:hover {
+  background: var(--im-bg-tertiary);
+}
+
+.stat-box.active .stat-link {
+  background: var(--im-accent);
+  color: white;
+}
+
+.stat-number {
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.stat-label {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 2rem;
+  padding: 1rem;
+}
+
+.page-info {
+  font-size: 14px;
+  color: var(--im-text-secondary);
+}
+
+/* Sync Filter Tabs */
+.sync-filter-tabs {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.sync-filter-tabs .btn {
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  text-decoration: none;
+  font-size: 13px;
+  background: var(--im-bg-secondary);
+  color: var(--im-text-primary);
+  transition: background 0.2s;
+}
+
+.sync-filter-tabs .btn:hover {
+  background: var(--im-bg-tertiary);
+}
+
+.sync-filter-tabs .btn.active {
+  background: var(--im-accent);
+  color: white;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 2rem;
+}
+
+.modal-content {
+  background: var(--im-bg-primary);
+  border-radius: 16px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--im-text-secondary);
+  cursor: pointer;
+  padding: 0.5rem;
+}
+
+.modal-close:hover {
+  color: var(--im-text-primary);
+}
+
+.modal-footer {
+  padding: 1rem;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid var(--im-border);
+}

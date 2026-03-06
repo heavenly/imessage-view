@@ -1,5 +1,5 @@
-use rusqlite::OptionalExtension;
 use rusqlite::Connection;
+use rusqlite::OptionalExtension;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
@@ -22,7 +22,10 @@ pub struct OverallStats {
     pub latest_message: Option<String>,
 }
 
-pub fn messages_per_conversation(conn: &Connection, limit: u32) -> anyhow::Result<Vec<(i64, String, i64)>> {
+pub fn messages_per_conversation(
+    conn: &Connection,
+    limit: u32,
+) -> anyhow::Result<Vec<(i64, String, i64)>> {
     let mut stmt = conn.prepare(
         "SELECT c.id,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS name,
@@ -41,7 +44,10 @@ pub fn messages_per_conversation(conn: &Connection, limit: u32) -> anyhow::Resul
     Ok(rows)
 }
 
-pub fn messages_over_time(conn: &Connection, granularity: &str) -> anyhow::Result<Vec<(String, i64)>> {
+pub fn messages_over_time(
+    conn: &Connection,
+    granularity: &str,
+) -> anyhow::Result<Vec<(String, i64)>> {
     let fmt = match granularity {
         "day" => "%Y-%m-%d",
         "week" => "%Y-W%W",
@@ -95,7 +101,9 @@ pub fn attachment_stats(conn: &Connection) -> anyhow::Result<AttachmentStats> {
                           AND mime_type NOT LIKE 'video/%'
                           AND mime_type NOT LIKE 'audio/%' THEN 1 ELSE 0 END) AS other,
                 COALESCE(SUM(total_bytes), 0) AS total_bytes
-         FROM attachments",
+         FROM attachments
+         WHERE (filename IS NULL OR filename NOT LIKE '%.pluginPayloadAttachment')
+           AND (transfer_name IS NULL OR transfer_name NOT LIKE '%.pluginPayloadAttachment')",
         [],
         |row| {
             Ok(AttachmentStats {
@@ -113,12 +121,10 @@ pub fn attachment_stats(conn: &Connection) -> anyhow::Result<AttachmentStats> {
 }
 
 pub fn overall_stats(conn: &Connection) -> anyhow::Result<OverallStats> {
-    let total_messages: i64 =
-        conn.query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?;
+    let total_messages: i64 = conn.query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?;
     let total_conversations: i64 =
         conn.query_row("SELECT COUNT(*) FROM conversations", [], |r| r.get(0))?;
-    let total_contacts: i64 =
-        conn.query_row("SELECT COUNT(*) FROM contacts", [], |r| r.get(0))?;
+    let total_contacts: i64 = conn.query_row("SELECT COUNT(*) FROM contacts", [], |r| r.get(0))?;
     let total_attachments: i64 =
         conn.query_row("SELECT COUNT(*) FROM attachments", [], |r| r.get(0))?;
 
@@ -176,7 +182,10 @@ pub struct ConversationInfo {
     pub participant_names: Vec<String>,
 }
 
-pub fn get_conversation_info(conn: &Connection, conversation_id: i64) -> anyhow::Result<ConversationInfo> {
+pub fn get_conversation_info(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<ConversationInfo> {
     let row = conn.query_row(
         "SELECT id, display_name, is_group FROM conversations WHERE id = ?1",
         [conversation_id],
@@ -231,17 +240,20 @@ pub fn get_messages(
     )?;
 
     let rows = stmt
-        .query_map(rusqlite::params![conversation_id, per_page, offset], |row| {
-            Ok(MessageRow {
-                id: row.get(0)?,
-                body: row.get(1)?,
-                is_from_me: row.get(2)?,
-                date_unix: row.get(3)?,
-                service: row.get(4)?,
-                sender_name: row.get(5)?,
-                has_attachments: row.get(6)?,
-            })
-        })?
+        .query_map(
+            rusqlite::params![conversation_id, per_page, offset],
+            |row| {
+                Ok(MessageRow {
+                    id: row.get(0)?,
+                    body: row.get(1)?,
+                    is_from_me: row.get(2)?,
+                    date_unix: row.get(3)?,
+                    service: row.get(4)?,
+                    sender_name: row.get(5)?,
+                    has_attachments: row.get(6)?,
+                })
+            },
+        )?
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(rows)
@@ -366,7 +378,6 @@ pub fn conversation_list(
     }
 }
 
-
 #[derive(Debug, Serialize)]
 pub struct AttachmentRow {
     pub id: i64,
@@ -430,24 +441,27 @@ pub fn list_attachments(
     offset: i64,
     limit: i64,
 ) -> anyhow::Result<Vec<AttachmentRow>> {
+    // Base where clause to exclude pluginPayloadAttachment files
+    let base_where = "WHERE (a.filename IS NULL OR a.filename NOT LIKE '%.pluginPayloadAttachment') AND (a.transfer_name IS NULL OR a.transfer_name NOT LIKE '%.pluginPayloadAttachment')";
+
     let (where_clause, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match mime_filter {
         Some("image") => (
-            "WHERE a.mime_type LIKE ?1".to_string(),
+            format!("{} AND a.mime_type LIKE ?1", base_where),
             vec![Box::new("image/%".to_string())],
         ),
         Some("video") => (
-            "WHERE a.mime_type LIKE ?1".to_string(),
+            format!("{} AND a.mime_type LIKE ?1", base_where),
             vec![Box::new("video/%".to_string())],
         ),
         Some("audio") => (
-            "WHERE a.mime_type LIKE ?1".to_string(),
+            format!("{} AND a.mime_type LIKE ?1", base_where),
             vec![Box::new("audio/%".to_string())],
         ),
         Some("other") => (
-            "WHERE a.mime_type NOT LIKE 'image/%' AND a.mime_type NOT LIKE 'video/%' AND a.mime_type NOT LIKE 'audio/%'".to_string(),
+            format!("{} AND a.mime_type NOT LIKE 'image/%' AND a.mime_type NOT LIKE 'video/%' AND a.mime_type NOT LIKE 'audio/%'", base_where),
             vec![],
         ),
-        _ => (String::new(), vec![]),
+        _ => (base_where.to_string(), vec![]),
     };
 
     let sql = format!(
@@ -528,24 +542,25 @@ pub fn get_attachment(conn: &Connection, id: i64) -> anyhow::Result<Option<Attac
 }
 
 pub fn count_attachments(conn: &Connection, mime_filter: Option<&str>) -> anyhow::Result<i64> {
+    let base_where = "(filename IS NULL OR filename NOT LIKE '%.pluginPayloadAttachment') AND (transfer_name IS NULL OR transfer_name NOT LIKE '%.pluginPayloadAttachment')";
     let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match mime_filter {
         Some("image") => (
-            "SELECT COUNT(*) FROM attachments WHERE mime_type LIKE ?1".to_string(),
+            format!("SELECT COUNT(*) FROM attachments WHERE {} AND mime_type LIKE ?1", base_where),
             vec![Box::new("image/%".to_string())],
         ),
         Some("video") => (
-            "SELECT COUNT(*) FROM attachments WHERE mime_type LIKE ?1".to_string(),
+            format!("SELECT COUNT(*) FROM attachments WHERE {} AND mime_type LIKE ?1", base_where),
             vec![Box::new("video/%".to_string())],
         ),
         Some("audio") => (
-            "SELECT COUNT(*) FROM attachments WHERE mime_type LIKE ?1".to_string(),
+            format!("SELECT COUNT(*) FROM attachments WHERE {} AND mime_type LIKE ?1", base_where),
             vec![Box::new("audio/%".to_string())],
         ),
         Some("other") => (
-            "SELECT COUNT(*) FROM attachments WHERE mime_type NOT LIKE 'image/%' AND mime_type NOT LIKE 'video/%' AND mime_type NOT LIKE 'audio/%'".to_string(),
+            format!("SELECT COUNT(*) FROM attachments WHERE {} AND mime_type NOT LIKE 'image/%' AND mime_type NOT LIKE 'video/%' AND mime_type NOT LIKE 'audio/%'", base_where),
             vec![],
         ),
-        _ => ("SELECT COUNT(*) FROM attachments".to_string(), vec![]),
+        _ => (format!("SELECT COUNT(*) FROM attachments WHERE {}", base_where), vec![]),
     };
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
@@ -571,6 +586,8 @@ pub fn conversation_attachments(
          JOIN messages m ON m.id = a.message_id
          JOIN conversations c ON c.id = m.conversation_id
          WHERE m.conversation_id = ?1
+           AND (a.filename IS NULL OR a.filename NOT LIKE '%.pluginPayloadAttachment')
+           AND (a.transfer_name IS NULL OR a.transfer_name NOT LIKE '%.pluginPayloadAttachment')
          ORDER BY m.date_unix DESC
          LIMIT {limit} OFFSET {offset}"
     );
@@ -598,22 +615,29 @@ pub fn conversation_attachments(
     Ok(rows)
 }
 
-pub fn count_conversation_attachments(conn: &Connection, conversation_id: i64) -> anyhow::Result<i64> {
+pub fn count_conversation_attachments(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<i64> {
     let count: i64 = conn.query_row(
         "SELECT COUNT(*)
          FROM attachments a
          JOIN messages m ON m.id = a.message_id
-         WHERE m.conversation_id = ?1",
+         WHERE m.conversation_id = ?1
+           AND (a.filename IS NULL OR a.filename NOT LIKE '%.pluginPayloadAttachment')
+           AND (a.transfer_name IS NULL OR a.transfer_name NOT LIKE '%.pluginPayloadAttachment')",
         [conversation_id],
         |r| r.get(0),
     )?;
     Ok(count)
 }
 
-
 pub fn count_missing_attachments(conn: &Connection) -> anyhow::Result<i64> {
     conn.query_row(
-        "SELECT COUNT(*) FROM attachments WHERE file_exists = 0",
+        "SELECT COUNT(*) FROM attachments 
+         WHERE file_exists = 0
+           AND (filename IS NULL OR filename NOT LIKE '%.pluginPayloadAttachment')
+           AND (transfer_name IS NULL OR transfer_name NOT LIKE '%.pluginPayloadAttachment')",
         [],
         |r| r.get(0),
     )
@@ -622,7 +646,10 @@ pub fn count_missing_attachments(conn: &Connection) -> anyhow::Result<i64> {
 
 pub fn count_missing_icloud_attachments(conn: &Connection) -> anyhow::Result<i64> {
     conn.query_row(
-        "SELECT COUNT(*) FROM attachments WHERE file_exists = 0 AND ck_sync_state = 1",
+        "SELECT COUNT(*) FROM attachments 
+         WHERE file_exists = 0 AND ck_sync_state = 1
+           AND (filename IS NULL OR filename NOT LIKE '%.pluginPayloadAttachment')
+           AND (transfer_name IS NULL OR transfer_name NOT LIKE '%.pluginPayloadAttachment')",
         [],
         |r| r.get(0),
     )
@@ -631,7 +658,10 @@ pub fn count_missing_icloud_attachments(conn: &Connection) -> anyhow::Result<i64
 
 pub fn count_missing_with_backup(conn: &Connection) -> anyhow::Result<i64> {
     conn.query_row(
-        "SELECT COUNT(*) FROM attachments WHERE file_exists = 0 AND backup_source_path IS NOT NULL",
+        "SELECT COUNT(*) FROM attachments 
+         WHERE file_exists = 0 AND backup_source_path IS NOT NULL
+           AND (filename IS NULL OR filename NOT LIKE '%.pluginPayloadAttachment')
+           AND (transfer_name IS NULL OR transfer_name NOT LIKE '%.pluginPayloadAttachment')",
         [],
         |r| r.get(0),
     )
@@ -655,6 +685,8 @@ pub fn get_missing_attachments(
          JOIN messages m ON m.id = a.message_id
          JOIN conversations c ON c.id = m.conversation_id
          WHERE a.file_exists = 0
+           AND (a.filename IS NULL OR a.filename NOT LIKE '%.pluginPayloadAttachment')
+           AND (a.transfer_name IS NULL OR a.transfer_name NOT LIKE '%.pluginPayloadAttachment')
          ORDER BY m.date_unix DESC
          LIMIT {limit} OFFSET {offset}"
     );
@@ -683,7 +715,11 @@ pub fn get_missing_attachments(
     Ok(rows)
 }
 
-pub fn update_attachment_backup_source(conn: &Connection, id: i64, backup_path: &str) -> anyhow::Result<()> {
+pub fn update_attachment_backup_source(
+    conn: &Connection,
+    id: i64,
+    backup_path: &str,
+) -> anyhow::Result<()> {
     conn.execute(
         "UPDATE attachments SET backup_source_path = ?1 WHERE id = ?2",
         rusqlite::params![backup_path, id],

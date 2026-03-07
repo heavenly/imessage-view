@@ -1,12 +1,12 @@
 use askama::Template;
 use axum::extract::{Path, Query, State};
-use axum::response::{Html, IntoResponse};
 use axum::http::HeaderMap;
+use axum::response::{Html, IntoResponse};
 use serde::{Deserialize, Serialize};
 
+use super::partials::{ContributionDay, HourlyStatView};
 use crate::db::queries;
 use crate::state::AppState;
-use super::partials::ContributionDay;
 
 fn relative_time(unix: i64) -> String {
     let now = chrono::Utc::now().timestamp();
@@ -91,7 +91,6 @@ pub fn build_conversation_rows(state: &AppState, filter: Option<&str>) -> Vec<Co
         .collect()
 }
 
-
 pub async fn index(
     headers: HeaderMap,
     Query(params): Query<IndexQuery>,
@@ -134,12 +133,11 @@ struct ConversationTemplate {
     avg_my_response: Option<String>,
     avg_time_between: Option<String>,
     focus_message_id: Option<i64>,
+    group_participant_stats: Vec<queries::GroupParticipantStat>,
+    hourly_stats: Vec<HourlyStatView>,
 }
 
-pub async fn conversation(
-    State(state): State<AppState>,
-    Path(id): Path<i64>,
-) -> impl IntoResponse {
+pub async fn conversation(State(state): State<AppState>, Path(id): Path<i64>) -> impl IntoResponse {
     let conn = state.db.lock().unwrap();
     let info = queries::get_conversation_info(&conn, id);
 
@@ -172,9 +170,23 @@ pub async fn conversation(
         (None, None, avg)
     } else {
         let times = queries::get_avg_response_times(&conn, id).ok();
-        let their = times.as_ref().and_then(|t| t.avg_their_response).map(super::partials::format_duration);
-        let mine = times.as_ref().and_then(|t| t.avg_my_response).map(super::partials::format_duration);
+        let their = times
+            .as_ref()
+            .and_then(|t| t.avg_their_response)
+            .map(super::partials::format_duration);
+        let mine = times
+            .as_ref()
+            .and_then(|t| t.avg_my_response)
+            .map(super::partials::format_duration);
         (their, mine, None)
+    };
+
+    let (group_participant_stats, hourly_stats) = if is_group {
+        let stats = queries::get_group_participant_stats(&conn, id).unwrap_or_default();
+        (stats, vec![])
+    } else {
+        let hourly = super::partials::build_hourly_stat_views(&conn, id);
+        (vec![], hourly)
     };
 
     let t = ConversationTemplate {
@@ -190,6 +202,8 @@ pub async fn conversation(
         avg_my_response,
         avg_time_between,
         focus_message_id: None,
+        group_participant_stats,
+        hourly_stats,
     };
     Html(t.render().unwrap_or_default())
 }
@@ -264,57 +278,70 @@ pub async fn attachments_page(
     Query(params): Query<AttachmentsQuery>,
 ) -> impl IntoResponse {
     const PER_PAGE: i64 = 50;
-    
+
     let page = params.page.unwrap_or(1).max(1) as i64;
     let filter = params.filter.as_deref().filter(|f| !f.is_empty());
-    
+
     let conn = state.db.lock().unwrap();
-    
+
     // Get counts for each category
     let total_count = queries::count_attachments(&conn, None).unwrap_or(0);
     let image_count = queries::count_attachments(&conn, Some("image")).unwrap_or(0);
     let video_count = queries::count_attachments(&conn, Some("video")).unwrap_or(0);
     let audio_count = queries::count_attachments(&conn, Some("audio")).unwrap_or(0);
     let other_count = queries::count_attachments(&conn, Some("other")).unwrap_or(0);
-    
+
     // Get filtered count
     let filtered_count = queries::count_attachments(&conn, filter).unwrap_or(0);
     let total_pages = ((filtered_count + PER_PAGE - 1) / PER_PAGE) as u32;
     let offset = (page - 1) * PER_PAGE;
-    
+
     // Get attachments
-    let attachments: Vec<AttachmentView> = queries::list_attachments(&conn, filter, offset, PER_PAGE)
-        .unwrap_or_default()
-        .into_iter()
-        .map(|a| {
-            let is_image = a.mime_type.as_deref().map(|m| m.starts_with("image/")).unwrap_or(false);
-            let is_video = a.mime_type.as_deref().map(|m| m.starts_with("video/")).unwrap_or(false);
-            let is_audio = a.mime_type.as_deref().map(|m| m.starts_with("audio/")).unwrap_or(false);
-            let has_preview = is_image || is_video;
-            AttachmentView {
-                id: a.id,
-                display_name: a.display_name().to_string(),
-                mime_type: a.mime_type.clone(),
-                mime_category: a.mime_category().to_string(),
-                size: a.human_size(),
-                file_exists: a.file_exists,
-                conversation_name: a.conversation_name.clone(),
-                conversation_id: a.conversation_id,
-                date: a.date_formatted(),
-                is_image,
-                is_video,
-                is_audio,
-                has_preview,
-                sync_status: match a.ck_sync_state {
-                    0 => "local".to_string(),
-                    1 => "icloud".to_string(),
-                    2 => "pending".to_string(),
-                    _ => "error".to_string(),
-                },
-            }
-        })
-        .collect();
-    
+    let attachments: Vec<AttachmentView> =
+        queries::list_attachments(&conn, filter, offset, PER_PAGE)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|a| {
+                let is_image = a
+                    .mime_type
+                    .as_deref()
+                    .map(|m| m.starts_with("image/"))
+                    .unwrap_or(false);
+                let is_video = a
+                    .mime_type
+                    .as_deref()
+                    .map(|m| m.starts_with("video/"))
+                    .unwrap_or(false);
+                let is_audio = a
+                    .mime_type
+                    .as_deref()
+                    .map(|m| m.starts_with("audio/"))
+                    .unwrap_or(false);
+                let has_preview = is_image || is_video;
+                AttachmentView {
+                    id: a.id,
+                    display_name: a.display_name().to_string(),
+                    mime_type: a.mime_type.clone(),
+                    mime_category: a.mime_category().to_string(),
+                    size: a.human_size(),
+                    file_exists: a.file_exists,
+                    conversation_name: a.conversation_name.clone(),
+                    conversation_id: a.conversation_id,
+                    date: a.date_formatted(),
+                    is_image,
+                    is_video,
+                    is_audio,
+                    has_preview,
+                    sync_status: match a.ck_sync_state {
+                        0 => "local".to_string(),
+                        1 => "icloud".to_string(),
+                        2 => "pending".to_string(),
+                        _ => "error".to_string(),
+                    },
+                }
+            })
+            .collect();
+
     let t = AttachmentsTemplate {
         title: "Attachments".to_string(),
         attachments,
@@ -330,7 +357,7 @@ pub async fn attachments_page(
         other_count,
         sync_filter: params.sync.clone().unwrap_or_default(),
     };
-    
+
     Html(t.render().unwrap_or_default())
 }
 
@@ -430,7 +457,14 @@ pub async fn analytics(State(state): State<AppState>) -> impl IntoResponse {
         .collect();
 
     let time_data = queries::messages_over_time(&conn, "month").unwrap_or_default();
-    let last_12: Vec<&(String, i64)> = time_data.iter().rev().take(12).collect::<Vec<_>>().into_iter().rev().collect();
+    let last_12: Vec<&(String, i64)> = time_data
+        .iter()
+        .rev()
+        .take(12)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect();
     let max_count = last_12.iter().map(|(_, c)| *c).max().unwrap_or(1);
     let month_bars: Vec<MonthBar> = last_12
         .into_iter()
@@ -456,7 +490,9 @@ pub async fn analytics(State(state): State<AppState>) -> impl IntoResponse {
         total_conversations: overall.total_conversations,
         total_contacts: overall.total_contacts,
         total_attachments: overall.total_attachments,
-        earliest: overall.earliest_message.unwrap_or_else(|| "N/A".to_string()),
+        earliest: overall
+            .earliest_message
+            .unwrap_or_else(|| "N/A".to_string()),
         latest: overall.latest_message.unwrap_or_else(|| "N/A".to_string()),
         top_conversations,
         top_contacts,
@@ -488,8 +524,10 @@ pub async fn conversation_photo(
             };
             (
                 axum::http::StatusCode::OK,
-                [(axum::http::header::CONTENT_TYPE, content_type),
-                 (axum::http::header::CACHE_CONTROL, "public, max-age=86400")],
+                [
+                    (axum::http::header::CONTENT_TYPE, content_type),
+                    (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
+                ],
                 bytes,
             )
                 .into_response()
@@ -504,8 +542,10 @@ pub async fn conversation_photo(
                     };
                     (
                         axum::http::StatusCode::OK,
-                        [(axum::http::header::CONTENT_TYPE, content_type),
-                         (axum::http::header::CACHE_CONTROL, "public, max-age=86400")],
+                        [
+                            (axum::http::header::CONTENT_TYPE, content_type),
+                            (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
+                        ],
                         bytes,
                     )
                         .into_response()
@@ -535,8 +575,10 @@ pub async fn contact_photo(
             };
             (
                 axum::http::StatusCode::OK,
-                [(axum::http::header::CONTENT_TYPE, content_type),
-                 (axum::http::header::CACHE_CONTROL, "public, max-age=86400")],
+                [
+                    (axum::http::header::CONTENT_TYPE, content_type),
+                    (axum::http::header::CACHE_CONTROL, "public, max-age=86400"),
+                ],
                 bytes,
             )
                 .into_response()

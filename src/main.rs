@@ -1,6 +1,5 @@
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
-use rusqlite::Connection;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
@@ -40,8 +39,7 @@ enum Commands {
 fn serve() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
         )
         .init();
 
@@ -50,7 +48,7 @@ fn serve() -> anyhow::Result<()> {
         anyhow::bail!("Database not found at {db_path:?}. Run 'import' first.");
     }
 
-    let conn = Connection::open(&db_path)?;
+    let conn = db::open_existing(&db_path)?;
     let state = state::AppState {
         db: Arc::new(Mutex::new(conn)),
     };
@@ -74,7 +72,7 @@ fn scan_ios_backup(backup_path: &Path, copy: bool) -> anyhow::Result<()> {
         anyhow::bail!("Database not found at {db_path:?}. Run 'import' first.");
     }
 
-    let conn = Connection::open(&db_path)?;
+    let conn = db::open_existing(&db_path)?;
     let missing = db::queries::get_missing_attachments(&conn, 0, i64::MAX)?;
 
     if missing.is_empty() {
@@ -82,7 +80,10 @@ fn scan_ios_backup(backup_path: &Path, copy: bool) -> anyhow::Result<()> {
         return Ok(());
     }
 
-    println!("Found {} missing attachments. Scanning iOS backup...", missing.len());
+    println!(
+        "Found {} missing attachments. Scanning iOS backup...",
+        missing.len()
+    );
 
     let pb = ProgressBar::new(missing.len() as u64);
     pb.set_style(
@@ -102,10 +103,15 @@ fn scan_ios_backup(backup_path: &Path, copy: bool) -> anyhow::Result<()> {
             continue;
         }
 
-        if let Some(backup_file) = recovery::ios_backup::scan_for_attachment(backup_path, filename) {
+        if let Some(backup_file) = recovery::ios_backup::scan_for_attachment(backup_path, filename)
+        {
             let backup_str = backup_file.to_string_lossy().to_string();
-            if let Err(e) = db::queries::update_attachment_backup_source(&conn, att.id, &backup_str) {
-                pb.println(format!("Failed to update DB for attachment {}: {e}", att.id));
+            if let Err(e) = db::queries::update_attachment_backup_source(&conn, att.id, &backup_str)
+            {
+                pb.println(format!(
+                    "Failed to update DB for attachment {}: {e}",
+                    att.id
+                ));
                 errors += 1;
             } else {
                 found += 1;

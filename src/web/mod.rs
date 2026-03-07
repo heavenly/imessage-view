@@ -22,10 +22,25 @@ pub fn router() -> Router<AppState> {
         .route("/analytics", get(pages::analytics))
         .route("/recovery", get(recovery::recovery_page))
         .route("/partials/messages", get(partials::messages_partial))
-        .route("/partials/conversations", get(partials::conversations_partial))
-        .route("/partials/search-results", get(partials::search_results_partial))
-        .route("/partials/conversation-attachments", get(partials::conversation_attachments_partial))
-        .route("/partials/conversation-panel", get(partials::conversation_panel_partial))
-        .route("/partials/unified-search", get(partials::unified_search_partial))
+        .route(
+            "/partials/conversations",
+            get(partials::conversations_partial),
+        )
+        .route(
+            "/partials/search-results",
+            get(partials::search_results_partial),
+        )
+        .route(
+            "/partials/conversation-attachments",
+            get(partials::conversation_attachments_partial),
+        )
+        .route(
+            "/partials/conversation-panel",
+            get(partials::conversation_panel_partial),
+        )
+        .route(
+            "/partials/unified-search",
+            get(partials::unified_search_partial),
+        )
         .nest_service("/static", ServeDir::new("static"))
 }

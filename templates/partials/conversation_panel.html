@@ -61,13 +61,74 @@
     <button id="scroll-to-bottom" class="im-scroll-bottom" aria-label="Scroll to bottom">&darr;</button>
 </div>
 
-<!-- Placeholder Sidebar -->
 <aside id="conversation-sidebar" class="im-conversation-sidebar">
     <div class="im-conversation-sidebar-header">
         <h3>Details</h3>
     </div>
     <div class="im-sidebar-content">
-        <p>More information will be placed here.</p>
+        {% if is_group %}
+        <div class="im-sidebar-section">
+            <div class="im-sidebar-section-title">Participants</div>
+            <ul class="im-participant-list">
+                {% for p in group_participant_stats %}
+                <li class="im-participant-item">
+                    <div class="im-avatar im-avatar--small">
+                        {% if p.has_photo %}
+                        {% if let Some(cid) = p.contact_id %}
+                        <img src="/contacts/{{ cid }}/photo" alt="" onload="this.classList.add('loaded')">
+                        {% else %}
+                        <span class="im-avatar-initial">{{ p.name.chars().next().unwrap_or('?') }}</span>
+                        {% endif %}
+                        {% else %}
+                        <span class="im-avatar-initial">{{ p.name.chars().next().unwrap_or('?') }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="im-participant-info">
+                        <span class="im-participant-name">{{ p.name }}</span>
+                        <span class="im-participant-stats">{{ p.message_count }} msgs · {{ p.percentage }}%</span>
+                    </div>
+                </li>
+                {% endfor %}
+            </ul>
+        </div>
+        {% else %}
+        {% if avg_their_response.is_some() || avg_my_response.is_some() %}
+        <div class="im-sidebar-section">
+            <div class="im-sidebar-section-title">Response Times</div>
+            <div class="im-sidebar-stats-grid">
+                {% if let Some(avg) = avg_their_response %}
+                <div class="im-sidebar-stat">
+                    <span class="im-sidebar-stat-value">~{{ avg }}</span>
+                    <span class="im-sidebar-stat-label">Their avg reply</span>
+                </div>
+                {% endif %}
+                {% if let Some(avg) = avg_my_response %}
+                <div class="im-sidebar-stat">
+                    <span class="im-sidebar-stat-value">~{{ avg }}</span>
+                    <span class="im-sidebar-stat-label">Your avg reply</span>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        {% if !hourly_stats.is_empty() %}
+        <div class="im-sidebar-section">
+            <div class="im-sidebar-section-title">Active Hours</div>
+            <div class="im-hourly-chart">
+                {% for h in hourly_stats %}
+                <div class="im-chart-col" title="{{ h.label }}: {{ h.count }} messages">
+                    <div class="im-chart-bar{% if h.is_peak %} im-chart-bar--peak{% endif %}" style="height: {{ h.pct }}%"></div>
+                    {% if h.hour == 0 || h.hour == 6 || h.hour == 12 || h.hour == 18 %}
+                    <span class="im-chart-label">{{ h.label }}</span>
+                    {% else %}
+                    <span class="im-chart-label"></span>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+        {% endif %}
     </div>
 </aside>
 </div>

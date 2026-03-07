@@ -1151,3 +1151,107 @@ pub fn get_contact_photo(conn: &Connection, contact_id: i64) -> anyhow::Result<O
         .flatten();
     Ok(photo)
 }
+
+#[derive(Debug, Serialize)]
+pub struct GroupParticipantStat {
+    pub contact_id: Option<i64>,
+    pub name: String,
+    pub message_count: i64,
+    pub percentage: String,
+    pub has_photo: bool,
+}
+
+pub fn get_group_participant_stats(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Vec<GroupParticipantStat>> {
+    let mut stmt = conn.prepare(
+        "WITH agg AS (
+             SELECT sender_id,
+                    is_from_me,
+                    COUNT(*) AS cnt
+             FROM messages
+             WHERE conversation_id = ?1
+             GROUP BY is_from_me, sender_id
+         )
+         SELECT agg.sender_id,
+                agg.is_from_me,
+                COALESCE(ct.display_name, ct.handle, 'Unknown') AS name,
+                agg.cnt,
+                (ct.photo IS NOT NULL) AS has_photo
+         FROM agg
+         LEFT JOIN contacts ct ON ct.id = agg.sender_id
+         ORDER BY agg.cnt DESC",
+    )?;
+
+    let rows: Vec<(Option<i64>, bool, String, i64, bool)> = stmt
+        .query_map([conversation_id], |row| {
+            Ok((
+                row.get(0)?,
+                row.get(1)?,
+                row.get(2)?,
+                row.get(3)?,
+                row.get::<_, bool>(4).unwrap_or(false),
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let total: i64 = rows.iter().map(|r| r.3).sum();
+    let total_f = if total > 0 { total as f64 } else { 1.0 };
+
+    let stats = rows
+        .into_iter()
+        .map(
+            |(sender_id, is_from_me, name, count, has_photo)| GroupParticipantStat {
+                contact_id: if is_from_me { None } else { sender_id },
+                name: if is_from_me { "Me".to_string() } else { name },
+                message_count: count,
+                percentage: format!("{:.1}", (count as f64 / total_f) * 100.0),
+                has_photo: if is_from_me { false } else { has_photo },
+            },
+        )
+        .collect();
+
+    Ok(stats)
+}
+
+#[derive(Debug, Serialize)]
+pub struct HourlyStat {
+    pub hour: u8,
+    pub count: i64,
+    pub pct: f64,
+}
+
+pub fn get_hourly_message_stats(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Vec<HourlyStat>> {
+    let mut stmt = conn.prepare(
+        "SELECT CAST(strftime('%H', date_unix, 'unixepoch', 'localtime') AS INTEGER) AS hour,
+                COUNT(*) AS cnt
+         FROM messages
+         WHERE conversation_id = ?1
+         GROUP BY hour
+         ORDER BY hour",
+    )?;
+
+    let rows: Vec<(u8, i64)> = stmt
+        .query_map([conversation_id], |row| Ok((row.get(0)?, row.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut counts = [0i64; 24];
+    for (h, c) in &rows {
+        counts[*h as usize] = *c;
+    }
+    let max_count = counts.iter().copied().max().unwrap_or(1).max(1) as f64;
+
+    let stats = (0..24u8)
+        .map(|h| HourlyStat {
+            hour: h,
+            count: counts[h as usize],
+            pct: (counts[h as usize] as f64 / max_count) * 100.0,
+        })
+        .collect();
+
+    Ok(stats)
+}

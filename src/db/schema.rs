@@ -78,6 +78,7 @@ CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
 
 pub const CREATE_INDEXES: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_messages_conversation_date ON messages(conversation_id, date_unix DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_conv_sender ON messages(conversation_id, is_from_me, sender_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date_unix DESC)",
     "CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id)",

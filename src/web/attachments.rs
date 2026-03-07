@@ -21,7 +21,10 @@ pub async fn download(
     let attachment = attachment.ok_or(StatusCode::NOT_FOUND)?;
 
     let file_path = if attachment.file_exists {
-        attachment.resolved_path.as_deref().ok_or(StatusCode::NOT_FOUND)?
+        attachment
+            .resolved_path
+            .as_deref()
+            .ok_or(StatusCode::NOT_FOUND)?
     } else if let Some(backup_path) = &attachment.backup_source_path {
         if StdPath::new(backup_path).exists() {
             backup_path.as_str()
@@ -81,7 +84,10 @@ pub async fn thumbnail(
     }
 
     let file_path = if attachment.file_exists {
-        attachment.resolved_path.as_deref().ok_or(StatusCode::NOT_FOUND)?
+        attachment
+            .resolved_path
+            .as_deref()
+            .ok_or(StatusCode::NOT_FOUND)?
     } else if let Some(backup_path) = &attachment.backup_source_path {
         if StdPath::new(backup_path).exists() {
             backup_path.as_str()
@@ -121,12 +127,7 @@ async fn generate_image_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
     // Try to open and resize the image
     let img = tokio::task::spawn_blocking({
         let path = path.to_path_buf();
-        move || {
-            image::ImageReader::open(&path)
-                .ok()?
-                .decode()
-                .ok()
-        }
+        move || image::ImageReader::open(&path).ok()?.decode().ok()
     })
     .await
     .ok()
@@ -134,12 +135,14 @@ async fn generate_image_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
 
     // Resize to max 300x300 maintaining aspect ratio
     let thumbnail = img.thumbnail(300, 300);
-    
+
     // Convert to JPEG
     let mut buffer = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut buffer);
-    thumbnail.write_to(&mut cursor, image::ImageFormat::Jpeg).ok()?;
-    
+    thumbnail
+        .write_to(&mut cursor, image::ImageFormat::Jpeg)
+        .ok()?;
+
     Some(buffer)
 }
 
@@ -150,7 +153,7 @@ async fn generate_video_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
         .arg("-version")
         .output()
         .await;
-    
+
     if ffmpeg_check.is_err() {
         return None;
     }

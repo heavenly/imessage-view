@@ -44,18 +44,18 @@ pub async fn recovery_page(
 ) -> impl IntoResponse {
     let page = params.page.unwrap_or(1).max(1) as i64;
     let offset = (page - 1) * PER_PAGE;
-    
+
     let conn = state.db.lock().unwrap();
-    
+
     // Get counts
     let total_missing = queries::count_missing_attachments(&conn).unwrap_or(0);
     let icloud_count = queries::count_missing_icloud_attachments(&conn).unwrap_or(0);
     let backup_count = queries::count_missing_with_backup(&conn).unwrap_or(0);
-    
+
     // Get missing attachments
     let rows = queries::get_missing_attachments(&conn, offset, PER_PAGE).unwrap_or_default();
     let total_pages = ((total_missing + PER_PAGE - 1) / PER_PAGE).max(1);
-    
+
     let attachments: Vec<RecoveryAttachmentView> = rows
         .into_iter()
         .map(|a| RecoveryAttachmentView {
@@ -74,7 +74,7 @@ pub async fn recovery_page(
             has_backup: a.backup_source_path.is_some(),
         })
         .collect();
-    
+
     let t = RecoveryTemplate {
         title: "Attachment Recovery".to_string(),
         attachments,
@@ -86,6 +86,6 @@ pub async fn recovery_page(
         icloud_count,
         backup_count,
     };
-    
+
     Html(t.render().unwrap_or_default())
 }

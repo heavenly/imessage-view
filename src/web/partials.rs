@@ -107,6 +107,40 @@ pub fn build_contribution_graph(
     result
 }
 
+#[derive(Debug, Clone)]
+pub struct HourlyStatView {
+    pub hour: u8,
+    pub label: String,
+    pub count: i64,
+    pub pct: f64,
+    pub is_peak: bool,
+}
+
+pub fn build_hourly_stat_views(
+    conn: &rusqlite::Connection,
+    conversation_id: i64,
+) -> Vec<HourlyStatView> {
+    let raw = queries::get_hourly_message_stats(conn, conversation_id).unwrap_or_default();
+    let max_count = raw.iter().map(|h| h.count).max().unwrap_or(0);
+    raw.into_iter()
+        .map(|h| {
+            let label = match h.hour {
+                0 => "12a".to_string(),
+                12 => "12p".to_string(),
+                h if h < 12 => format!("{}a", h),
+                h => format!("{}p", h - 12),
+            };
+            HourlyStatView {
+                hour: h.hour,
+                label,
+                count: h.count,
+                pct: h.pct,
+                is_peak: h.count == max_count && max_count > 0,
+            }
+        })
+        .collect()
+}
+
 #[derive(Template)]
 #[template(path = "partials/conversation_panel.html")]
 struct ConversationPanelTemplate {
@@ -121,6 +155,8 @@ struct ConversationPanelTemplate {
     avg_my_response: Option<String>,
     avg_time_between: Option<String>,
     focus_message_id: Option<i64>,
+    group_participant_stats: Vec<queries::GroupParticipantStat>,
+    hourly_stats: Vec<HourlyStatView>,
 }
 
 pub async fn conversation_panel_partial(
@@ -160,9 +196,23 @@ pub async fn conversation_panel_partial(
         (None, None, avg)
     } else {
         let times = queries::get_avg_response_times(&conn, id).ok();
-        let their = times.as_ref().and_then(|t| t.avg_their_response).map(format_duration);
-        let mine = times.as_ref().and_then(|t| t.avg_my_response).map(format_duration);
+        let their = times
+            .as_ref()
+            .and_then(|t| t.avg_their_response)
+            .map(format_duration);
+        let mine = times
+            .as_ref()
+            .and_then(|t| t.avg_my_response)
+            .map(format_duration);
         (their, mine, None)
+    };
+
+    let (group_participant_stats, hourly_stats) = if is_group {
+        let stats = queries::get_group_participant_stats(&conn, id).unwrap_or_default();
+        (stats, vec![])
+    } else {
+        let hourly = build_hourly_stat_views(&conn, id);
+        (vec![], hourly)
     };
 
     let t = ConversationPanelTemplate {
@@ -177,6 +227,8 @@ pub async fn conversation_panel_partial(
         avg_my_response,
         avg_time_between,
         focus_message_id: params.focus,
+        group_participant_stats,
+        hourly_stats,
     };
     Html(t.render().unwrap_or_default())
 }
@@ -260,18 +312,26 @@ pub async fn messages_partial(
                 has_older: false,
                 has_newer: false,
             });
-        (result.messages, result.has_older, result.has_newer, 0u32, Some(focus))
+        (
+            result.messages,
+            result.has_older,
+            result.has_newer,
+            0u32,
+            Some(focus),
+        )
     } else if let Some(before_id) = params.before {
         // Before mode: cursor-based load older
-        let rows = queries::get_messages_before(&conn, conversation_id, before_id, MESSAGES_PER_PAGE + 1)
-            .unwrap_or_default();
+        let rows =
+            queries::get_messages_before(&conn, conversation_id, before_id, MESSAGES_PER_PAGE + 1)
+                .unwrap_or_default();
         let has_more = rows.len() > MESSAGES_PER_PAGE as usize;
         let rows: Vec<_> = rows.into_iter().take(MESSAGES_PER_PAGE as usize).collect();
         (rows, has_more, false, 0u32, None)
     } else if let Some(after_id) = params.after {
         // After mode: cursor-based load newer
-        let rows = queries::get_messages_after(&conn, conversation_id, after_id, MESSAGES_PER_PAGE + 1)
-            .unwrap_or_default();
+        let rows =
+            queries::get_messages_after(&conn, conversation_id, after_id, MESSAGES_PER_PAGE + 1)
+                .unwrap_or_default();
         let has_newer = rows.len() > MESSAGES_PER_PAGE as usize;
         let rows: Vec<_> = rows.into_iter().take(MESSAGES_PER_PAGE as usize).collect();
         (rows, false, has_newer, 0u32, None)
@@ -285,7 +345,11 @@ pub async fn messages_partial(
         (rows, has_more, false, page, None)
     };
 
-    let message_ids: Vec<i64> = raw_messages.iter().filter(|m| m.has_attachments).map(|m| m.id).collect();
+    let message_ids: Vec<i64> = raw_messages
+        .iter()
+        .filter(|m| m.has_attachments)
+        .map(|m| m.id)
+        .collect();
     let mut att_map = queries::get_message_attachments(&conn, &message_ids).unwrap_or_default();
 
     let mut messages: Vec<MessageView> = raw_messages
@@ -674,7 +738,10 @@ pub async fn conversation_attachments_partial(
         .unwrap_or_default();
 
     let has_more = rows.len() > ATTACHMENTS_PER_PAGE as usize;
-    let rows: Vec<_> = rows.into_iter().take(ATTACHMENTS_PER_PAGE as usize).collect();
+    let rows: Vec<_> = rows
+        .into_iter()
+        .take(ATTACHMENTS_PER_PAGE as usize)
+        .collect();
 
     let attachments: Vec<ConversationAttachmentView> = rows
         .into_iter()
@@ -686,7 +753,11 @@ pub async fn conversation_attachments_partial(
             size: a.human_size(),
             file_exists: a.file_exists,
             date: a.date_formatted(),
-            is_image: a.mime_type.as_deref().map(|m| m.starts_with("image/")).unwrap_or(false),
+            is_image: a
+                .mime_type
+                .as_deref()
+                .map(|m| m.starts_with("image/"))
+                .unwrap_or(false),
         })
         .collect();
 

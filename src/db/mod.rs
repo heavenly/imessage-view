@@ -24,6 +24,7 @@ pub fn create_db(path: &Path) -> anyhow::Result<Connection> {
 pub fn open_existing(path: &Path) -> anyhow::Result<Connection> {
     let conn = Connection::open(path)?;
     set_pragmas(&conn)?;
+    schema::create_all_tables(&conn)?;
     Ok(conn)
 }
 
@@ -120,6 +121,7 @@ mod tests {
             .collect();
 
         assert!(indexes.contains(&"idx_messages_conversation_date".to_string()));
+        assert!(indexes.contains(&"idx_messages_conv_sender".to_string()));
         assert!(indexes.contains(&"idx_messages_sender".to_string()));
         assert!(indexes.contains(&"idx_messages_date".to_string()));
         assert!(indexes.contains(&"idx_attachments_message".to_string()));

@@ -1,0 +1,71 @@
+<div class="im-main im-chat-container" id="main-content">
+    <header class="im-chat-header">
+        <div class="im-chat-header-info">
+            <div class="im-avatar{% if is_group %} im-avatar--group{% endif %}">
+                {% if has_photo %}
+                <img src="/conversations/{{ conversation_id }}/photo" alt="" onload="this.classList.add('loaded')">
+                {% else %}
+                <span class="im-avatar-initial">{% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}</span>
+                {% endif %}
+            </div>
+            <div class="im-chat-header-text">
+                <h2 class="im-chat-header-name">{{ contact_name }}</h2>
+                {% if is_group %}
+                <p class="im-chat-header-participants">{{ participants.join(", ") }}</p>
+                {% else %}
+                <p class="im-chat-header-status"></p>
+                {% endif %}
+            </div>
+        </div>
+        <div class="im-chat-header-actions">
+            <button class="im-header-btn" title="Info">ℹ️</button>
+        </div>
+    </header>
+    
+    <div class="im-tab-bar">
+        <button class="im-tab active" 
+                hx-get="/partials/messages?conversation_id={{ conversation_id }}"
+                hx-target="#tab-content"
+                hx-swap="innerHTML"
+                hx-trigger="load, click"
+                onclick="document.querySelectorAll('.im-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">
+            Messages
+        </button>
+        <button class="im-tab"
+                hx-get="/partials/conversation-attachments?conversation_id={{ conversation_id }}"
+                hx-target="#tab-content"
+                hx-swap="innerHTML"
+                onclick="document.querySelectorAll('.im-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">
+            Attachments
+            <span class="im-tab-count">{{ attachment_count }}</span>
+        </button>
+    </div>
+    
+    <div id="tab-content" class="im-chat-content">
+        <div class="im-loading">
+            <span class="im-spinner"></span>
+            <p>Loading messages...</p>
+        </div>
+    </div>
+    <button id="scroll-to-bottom" class="im-scroll-bottom" aria-label="Scroll to bottom">&darr;</button>
+</div>
+
+<script>
+(function() {
+    var tabContent = document.getElementById('tab-content');
+    var scrollBtn = document.getElementById('scroll-to-bottom');
+    if (tabContent && scrollBtn) {
+        tabContent.addEventListener('scroll', function() {
+            var distFromBottom = tabContent.scrollHeight - tabContent.scrollTop - tabContent.clientHeight;
+            if (distFromBottom > 300) {
+                scrollBtn.classList.add('visible');
+            } else {
+                scrollBtn.classList.remove('visible');
+            }
+        });
+        scrollBtn.addEventListener('click', function() {
+            tabContent.scrollTo({ top: tabContent.scrollHeight, behavior: 'smooth' });
+        });
+    }
+})();
+</script>

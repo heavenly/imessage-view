@@ -11,6 +11,60 @@ use crate::state::AppState;
 use super::pages::ConversationRow;
 
 #[derive(Deserialize)]
+pub struct ConversationPanelQuery {
+    pub id: i64,
+}
+
+#[derive(Template)]
+#[template(path = "partials/conversation_panel.html")]
+struct ConversationPanelTemplate {
+    conversation_id: i64,
+    contact_name: String,
+    is_group: bool,
+    participants: Vec<String>,
+    attachment_count: i64,
+    has_photo: bool,
+}
+
+pub async fn conversation_panel_partial(
+    State(state): State<AppState>,
+    Query(params): Query<ConversationPanelQuery>,
+) -> impl IntoResponse {
+    let id = params.id;
+    let conn = state.db.lock().unwrap();
+    let info = queries::get_conversation_info(&conn, id);
+
+    let (contact_name, is_group, participants, has_photo) = match info {
+        Ok(info) => {
+            let name = info
+                .display_name
+                .clone()
+                .unwrap_or_else(|| {
+                    if info.participant_names.is_empty() {
+                        "Unknown".to_string()
+                    } else {
+                        info.participant_names.join(", ")
+                    }
+                });
+            (name, info.is_group, info.participant_names, info.has_photo)
+        }
+        Err(_) => ("Unknown".to_string(), false, vec![], false),
+    };
+
+    let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
+
+    let t = ConversationPanelTemplate {
+        conversation_id: id,
+        contact_name,
+        is_group,
+        participants,
+        attachment_count,
+        has_photo,
+    };
+    Html(t.render().unwrap_or_default())
+}
+
+#[derive(Deserialize)]
 pub struct MessagesQuery {
     pub conversation_id: Option<i64>,
     pub page: Option<u32>,

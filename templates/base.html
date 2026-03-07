@@ -11,5 +11,68 @@
     <div class="im-app">
         {% block content %}{% endblock %}
     </div>
+    <script>
+    // Scroll preservation for infinite-scroll message pagination (sentinel swaps)
+    document.body.addEventListener('htmx:beforeSwap', function(event) {
+        var target = event.detail.elt;
+        if (target && target.id && target.id.startsWith('sentinel-')) {
+            var container = document.getElementById('tab-content');
+            if (container) {
+                container._prevScrollHeight = container.scrollHeight;
+                container._prevScrollTop = container.scrollTop;
+            }
+        }
+    });
+
+    document.body.addEventListener('htmx:afterSettle', function(event) {
+        var target = event.detail.elt;
+        if (target && target.id && target.id.startsWith('sentinel-')) {
+            var container = document.getElementById('tab-content');
+            if (container && container._prevScrollHeight != null) {
+                var delta = container.scrollHeight - container._prevScrollHeight;
+                container.style.scrollBehavior = 'auto';
+                container.scrollTop = container._prevScrollTop + delta;
+                container.style.scrollBehavior = '';
+                delete container._prevScrollHeight;
+                delete container._prevScrollTop;
+            }
+        } else if (event.detail.target && event.detail.target.id === 'tab-content') {
+            event.detail.target.scrollTop = event.detail.target.scrollHeight;
+        }
+    });
+
+    // After a conversation panel is swapped in, highlight the active sidebar item
+    document.body.addEventListener('htmx:afterSwap', function(event) {
+        if (event.detail.target && event.detail.target.id === 'main-content') {
+            var items = document.querySelectorAll('.im-conversation-item');
+            var url = window.location.pathname;
+            items.forEach(function(item) {
+                if (item.getAttribute('href') === url) {
+                    item.classList.add('active');
+                } else {
+                    item.classList.remove('active');
+                }
+            });
+        }
+    });
+
+    // On initial page load, highlight active conversation and scroll to bottom
+    document.addEventListener('DOMContentLoaded', function() {
+        var url = window.location.pathname;
+        var items = document.querySelectorAll('.im-conversation-item');
+        items.forEach(function(item) {
+            if (item.getAttribute('href') === url) {
+                item.classList.add('active');
+            }
+        });
+
+        setTimeout(function() {
+            var tabContent = document.getElementById('tab-content');
+            if (tabContent) {
+                tabContent.scrollTop = tabContent.scrollHeight;
+            }
+        }, 100);
+    });
+    </script>
 </body>
 </html>

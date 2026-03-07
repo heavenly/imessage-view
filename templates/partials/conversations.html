@@ -4,7 +4,11 @@
 </div>
 {% else %}
 {% for c in conversations %}
-<a href="/conversations/{{ c.id }}" class="im-conversation-item">
+<a href="/conversations/{{ c.id }}" class="im-conversation-item"
+   hx-get="/partials/conversation-panel?id={{ c.id }}"
+   hx-target="#main-content"
+   hx-swap="outerHTML"
+   hx-push-url="/conversations/{{ c.id }}">
     <div class="im-avatar{% if c.is_group %} im-avatar--group{% endif %}">
         {% if c.has_photo %}
         <img src="/conversations/{{ c.id }}/photo" alt="" loading="lazy" onload="this.classList.add('loaded')">

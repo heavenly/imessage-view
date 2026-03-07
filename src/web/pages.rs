@@ -224,6 +224,9 @@ struct AttachmentView {
     pub conversation_id: Option<i64>,
     pub date: String,
     pub is_image: bool,
+    pub is_video: bool,
+    pub is_audio: bool,
+    pub has_preview: bool,
     pub sync_status: String,
 }
 pub async fn attachments_page(
@@ -253,23 +256,32 @@ pub async fn attachments_page(
     let attachments: Vec<AttachmentView> = queries::list_attachments(&conn, filter, offset, PER_PAGE)
         .unwrap_or_default()
         .into_iter()
-        .map(|a| AttachmentView {
-            id: a.id,
-            display_name: a.display_name().to_string(),
-            mime_type: a.mime_type.clone(),
-            mime_category: a.mime_category().to_string(),
-            size: a.human_size(),
-            file_exists: a.file_exists,
-            conversation_name: a.conversation_name.clone(),
-            conversation_id: a.conversation_id,
-            date: a.date_formatted(),
-            is_image: a.mime_type.as_deref().map(|m| m.starts_with("image/")).unwrap_or(false),
-            sync_status: match a.ck_sync_state {
-                0 => "local".to_string(),
-                1 => "icloud".to_string(),
-                2 => "pending".to_string(),
-                _ => "error".to_string(),
-            },
+        .map(|a| {
+            let is_image = a.mime_type.as_deref().map(|m| m.starts_with("image/")).unwrap_or(false);
+            let is_video = a.mime_type.as_deref().map(|m| m.starts_with("video/")).unwrap_or(false);
+            let is_audio = a.mime_type.as_deref().map(|m| m.starts_with("audio/")).unwrap_or(false);
+            let has_preview = is_image || is_video;
+            AttachmentView {
+                id: a.id,
+                display_name: a.display_name().to_string(),
+                mime_type: a.mime_type.clone(),
+                mime_category: a.mime_category().to_string(),
+                size: a.human_size(),
+                file_exists: a.file_exists,
+                conversation_name: a.conversation_name.clone(),
+                conversation_id: a.conversation_id,
+                date: a.date_formatted(),
+                is_image,
+                is_video,
+                is_audio,
+                has_preview,
+                sync_status: match a.ck_sync_state {
+                    0 => "local".to_string(),
+                    1 => "icloud".to_string(),
+                    2 => "pending".to_string(),
+                    _ => "error".to_string(),
+                },
+            }
         })
         .collect();
     

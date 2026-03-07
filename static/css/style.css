@@ -629,6 +629,47 @@ body {
   justify-content: center;
   background: var(--im-bg-tertiary);
   font-size: 48px;
+  overflow: hidden;
+  position: relative;
+}
+
+.attachment-preview a {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.attachment-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s;
+}
+
+.attachment-card:hover .attachment-thumbnail {
+  transform: scale(1.05);
+}
+
+.fallback-placeholder,
+.audio-placeholder,
+.file-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  font-size: 48px;
+}
+
+.attachment-preview::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, rgba(0,0,0,0.02) 100%);
+  pointer-events: none;
 }
 
 .attachment-info {

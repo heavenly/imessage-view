@@ -105,7 +105,7 @@ pub async fn messages_partial(
         })
         .collect();
 
-    // Reverse: query is DESC for pagination, but display needs oldest first
+    // Reverse: query is DESC (newest first), reverse to put oldest at top, newest at bottom
     messages.reverse();
 
     // Group consecutive messages by sender and date

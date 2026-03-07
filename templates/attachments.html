@@ -55,12 +55,18 @@
             {% if a.sync_status == "error" %}❌ Error{% endif %}
         </div>
         <div class="attachment-preview">
-            {% if a.is_image %}
-            <div class="image-placeholder">📷</div>
+            {% if a.mime_category == "image" %}
+            <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'image', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="image" data-url="/attachments/download/{{ a.id }}">
+                <img src="/attachments/thumbnail/{{ a.id }}" alt="{{ a.display_name }}" class="attachment-thumbnail" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <span class="fallback-placeholder" style="display:none">📷</span>
+            </a>
             {% else if a.mime_category == "video" %}
-            <div class="video-placeholder">🎬</div>
+            <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'video', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="video" data-url="/attachments/download/{{ a.id }}">
+                <img src="/attachments/thumbnail/{{ a.id }}" alt="{{ a.display_name }}" class="attachment-thumbnail" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                <span class="fallback-placeholder" style="display:none">🎬</span>
+            </a>
             {% else if a.mime_category == "audio" %}
-            <div class="audio-placeholder">🔊</div>
+            <div class="audio-placeholder">🎵</div>
             {% else %}
             <div class="file-placeholder">📄</div>
             {% endif %}

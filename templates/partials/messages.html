@@ -7,6 +7,16 @@
 {% endif %}
 {% else %}
 
+{% if has_more %}
+<div id="sentinel-{{ page }}"
+     hx-get="/partials/messages?conversation_id={{ conversation_id }}&page={{ page + 1 }}"
+     hx-trigger="intersect root:.im-chat-content threshold:0"
+     hx-swap="outerHTML"
+     class="im-loading-sentinel">
+    <span class="im-spinner"></span>
+</div>
+{% endif %}
+
 {% for group in groups %}
     {% if let Some(date) = group.date_separator %}
     <div class="im-date-separator">
@@ -63,14 +73,5 @@
         {% endfor %}
     </div>
 {% endfor %}
-
-{% if has_more %}
-<div hx-get="/partials/messages?conversation_id={{ conversation_id }}&page={{ page + 1 }}"
-     hx-trigger="revealed"
-     hx-swap="afterend"
-     class="im-loading-sentinel">
-    <span class="im-spinner"></span>
-</div>
-{% endif %}
 
 {% endif %}

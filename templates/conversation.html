@@ -73,4 +73,43 @@
     </div>
     
 </div>
+
+<script>
+document.body.addEventListener('htmx:beforeSwap', function(event) {
+    var target = event.detail.elt;
+    if (target && target.id && target.id.startsWith('sentinel-')) {
+        var container = document.getElementById('tab-content');
+        if (container) {
+            container._prevScrollHeight = container.scrollHeight;
+            container._prevScrollTop = container.scrollTop;
+        }
+    }
+});
+
+document.body.addEventListener('htmx:afterSettle', function(event) {
+    var target = event.detail.elt;
+    if (target && target.id && target.id.startsWith('sentinel-')) {
+        var container = document.getElementById('tab-content');
+        if (container && container._prevScrollHeight != null) {
+            var delta = container.scrollHeight - container._prevScrollHeight;
+            container.style.scrollBehavior = 'auto';
+            container.scrollTop = container._prevScrollTop + delta;
+            container.style.scrollBehavior = '';
+            delete container._prevScrollHeight;
+            delete container._prevScrollTop;
+        }
+    } else if (event.detail.target && event.detail.target.id === 'tab-content') {
+        event.detail.target.scrollTop = event.detail.target.scrollHeight;
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    setTimeout(function() {
+        var tabContent = document.getElementById('tab-content');
+        if (tabContent) {
+            tabContent.scrollTop = tabContent.scrollHeight;
+        }
+    }, 100);
+});
+</script>
 {% endblock %}

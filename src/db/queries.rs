@@ -476,7 +476,7 @@ pub fn list_attachments(
          JOIN messages m ON m.id = a.message_id
          JOIN conversations c ON c.id = m.conversation_id
          {where_clause}
-         ORDER BY m.date_unix DESC
+         ORDER BY m.date_unix ASC
          LIMIT {limit} OFFSET {offset}"
     );
 
@@ -588,7 +588,7 @@ pub fn conversation_attachments(
          WHERE m.conversation_id = ?1
            AND (a.filename IS NULL OR a.filename NOT LIKE '%.pluginPayloadAttachment')
            AND (a.transfer_name IS NULL OR a.transfer_name NOT LIKE '%.pluginPayloadAttachment')
-         ORDER BY m.date_unix DESC
+         ORDER BY m.date_unix ASC
          LIMIT {limit} OFFSET {offset}"
     );
 
@@ -687,7 +687,7 @@ pub fn get_missing_attachments(
          WHERE a.file_exists = 0
            AND (a.filename IS NULL OR a.filename NOT LIKE '%.pluginPayloadAttachment')
            AND (a.transfer_name IS NULL OR a.transfer_name NOT LIKE '%.pluginPayloadAttachment')
-         ORDER BY m.date_unix DESC
+         ORDER BY m.date_unix ASC
          LIMIT {limit} OFFSET {offset}"
     );
 

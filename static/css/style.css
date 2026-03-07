@@ -62,6 +62,7 @@ body {
   display: flex;
   flex-direction: column;
   background-color: var(--im-bg-primary);
+  position: relative;
 }
 
 .im-chat {
@@ -92,6 +93,7 @@ body {
     background: var(--im-bg-tertiary);
     font-size: 13px;
     outline: none;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
 }
 
 .im-search:focus {
@@ -111,7 +113,7 @@ body {
     text-decoration: none;
     color: inherit;
     border-bottom: 1px solid rgba(0,0,0,0.05);
-    transition: background 0.15s;
+    transition: background 0.15s ease, transform 0.15s ease;
 }
 
 .im-conversation-item:hover {
@@ -887,4 +889,188 @@ body {
   display: flex;
   justify-content: center;
   border-top: 1px solid var(--im-border);
+}
+
+/* ==============================
+   Microanimations
+   ============================== */
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Conversation list: staggered fade-in */
+.im-conversation-item {
+  animation: fadeInUp 0.3s ease-out both;
+}
+.im-conversation-item:nth-child(1)  { animation-delay: 0ms; }
+.im-conversation-item:nth-child(2)  { animation-delay: 20ms; }
+.im-conversation-item:nth-child(3)  { animation-delay: 40ms; }
+.im-conversation-item:nth-child(4)  { animation-delay: 60ms; }
+.im-conversation-item:nth-child(5)  { animation-delay: 80ms; }
+.im-conversation-item:nth-child(6)  { animation-delay: 100ms; }
+.im-conversation-item:nth-child(7)  { animation-delay: 120ms; }
+.im-conversation-item:nth-child(8)  { animation-delay: 140ms; }
+.im-conversation-item:nth-child(9)  { animation-delay: 160ms; }
+.im-conversation-item:nth-child(10) { animation-delay: 180ms; }
+.im-conversation-item:nth-child(11) { animation-delay: 200ms; }
+.im-conversation-item:nth-child(12) { animation-delay: 220ms; }
+.im-conversation-item:nth-child(13) { animation-delay: 240ms; }
+.im-conversation-item:nth-child(14) { animation-delay: 260ms; }
+.im-conversation-item:nth-child(15) { animation-delay: 280ms; }
+.im-conversation-item:nth-child(n+16) { animation-delay: 300ms; }
+
+/* Message groups: fade-in-up */
+.im-message-group {
+  animation: fadeInUp 0.3s ease-out both;
+}
+
+/* Date separators: fade in */
+.im-date-separator {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+/* Avatar photo: smooth reveal on load */
+.im-avatar img {
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.im-avatar img.loaded {
+  opacity: 1;
+}
+
+/* Avatar letter/emoji: scale-in pop */
+.im-avatar-initial {
+  animation: scaleIn 0.3s ease-out both;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+/* Tab content: fade-in on HTMX swap */
+.im-chat-content {
+  animation: fadeIn 0.2s ease;
+}
+
+/* Search results: staggered fade-in */
+.im-search-result {
+  animation: fadeInUp 0.3s ease-out both;
+}
+.im-search-result:nth-child(1)  { animation-delay: 0ms; }
+.im-search-result:nth-child(2)  { animation-delay: 30ms; }
+.im-search-result:nth-child(3)  { animation-delay: 60ms; }
+.im-search-result:nth-child(4)  { animation-delay: 90ms; }
+.im-search-result:nth-child(5)  { animation-delay: 120ms; }
+.im-search-result:nth-child(6)  { animation-delay: 150ms; }
+.im-search-result:nth-child(7)  { animation-delay: 180ms; }
+.im-search-result:nth-child(8)  { animation-delay: 210ms; }
+.im-search-result:nth-child(9)  { animation-delay: 240ms; }
+.im-search-result:nth-child(10) { animation-delay: 270ms; }
+.im-search-result:nth-child(n+11) { animation-delay: 300ms; }
+
+/* Modal: animated open/close via .active class */
+.modal-overlay {
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+}
+.modal-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+.modal-content {
+  transform: scale(0.95);
+  transition: transform 0.25s ease-out;
+}
+.modal-overlay.active .modal-content {
+  transform: scale(1);
+}
+
+/* Scroll-to-bottom floating button */
+.im-scroll-bottom {
+  position: absolute;
+  bottom: 24px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--im-bg-primary);
+  border: 1px solid var(--im-border);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  color: var(--im-text-secondary);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px);
+  transition: opacity 0.2s ease, visibility 0.2s ease, transform 0.2s ease, background 0.15s ease;
+}
+.im-scroll-bottom.visible {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+.im-scroll-bottom:hover {
+  background: var(--im-bg-secondary);
+  color: var(--im-text-primary);
+}
+
+/* Attachment cards: fade-in on page load */
+.attachment-card {
+  animation: fadeInUp 0.3s ease-out both;
+}
+
+/* Conversation item hover: subtle transform feedback */
+.im-conversation-item:hover {
+  transform: scale(1.005);
+}
+.im-conversation-item:active {
+  transform: scale(0.995);
+}
+
+/* Empty state: gentle fade-in */
+.im-empty-state,
+.im-empty-chat {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+/* Chat header: slide-in from top */
+.im-chat-header {
+  animation: fadeIn 0.25s ease-out both;
+}
+
+/* Tab bar active underline: smooth color transition */
+.im-tab {
+  transition: all 0.2s ease;
+}
+
+/* Accessibility: respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

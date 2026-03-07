@@ -7,9 +7,9 @@
 <a href="/conversations/{{ c.id }}" class="im-conversation-item">
     <div class="im-avatar{% if c.is_group %} im-avatar--group{% endif %}">
         {% if c.has_photo %}
-        <img src="/conversations/{{ c.id }}/photo" alt="" loading="lazy">
+        <img src="/conversations/{{ c.id }}/photo" alt="" loading="lazy" onload="this.classList.add('loaded')">
         {% else %}
-        {% if c.is_group %}👥{% else %}{{ c.name.chars().next().unwrap_or('?') }}{% endif %}
+        <span class="im-avatar-initial">{% if c.is_group %}👥{% else %}{{ c.name.chars().next().unwrap_or('?') }}{% endif %}</span>
         {% endif %}
     </div>
     <div class="im-conversation-content">

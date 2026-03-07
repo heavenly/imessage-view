@@ -29,9 +29,9 @@
         <div class="im-chat-header-info">
             <div class="im-avatar{% if is_group %} im-avatar--group{% endif %}">
                 {% if has_photo %}
-                <img src="/conversations/{{ conversation_id }}/photo" alt="">
+                <img src="/conversations/{{ conversation_id }}/photo" alt="" onload="this.classList.add('loaded')">
                 {% else %}
-                {% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}
+                <span class="im-avatar-initial">{% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}</span>
                 {% endif %}
             </div>
             <div class="im-chat-header-text">
@@ -75,6 +75,7 @@
             <p>Loading messages...</p>
         </div>
     </div>
+    <button id="scroll-to-bottom" class="im-scroll-bottom" aria-label="Scroll to bottom">&darr;</button>
     
 </div>
 
@@ -114,6 +115,22 @@ document.addEventListener('DOMContentLoaded', function() {
             tabContent.scrollTop = tabContent.scrollHeight;
         }
     }, 100);
+
+    var tabContent = document.getElementById('tab-content');
+    var scrollBtn = document.getElementById('scroll-to-bottom');
+    if (tabContent && scrollBtn) {
+        tabContent.addEventListener('scroll', function() {
+            var distFromBottom = tabContent.scrollHeight - tabContent.scrollTop - tabContent.clientHeight;
+            if (distFromBottom > 300) {
+                scrollBtn.classList.add('visible');
+            } else {
+                scrollBtn.classList.remove('visible');
+            }
+        });
+        scrollBtn.addEventListener('click', function() {
+            tabContent.scrollTo({ top: tabContent.scrollHeight, behavior: 'smooth' });
+        });
+    }
 });
 </script>
 {% endblock %}

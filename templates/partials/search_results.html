@@ -5,7 +5,7 @@
 {% else %}
 <p>{{ total_count }} result{% if total_count != 1 %}s{% endif %} for "{{ query }}"</p>
 {% for r in results %}
-<article>
+<article class="im-search-result">
     <header>
         <strong>{{ r.sender_label }}</strong>
         in <a href="/conversations/{{ r.conversation_id }}">{{ r.conversation_label }}</a>

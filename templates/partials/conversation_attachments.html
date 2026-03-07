@@ -51,7 +51,7 @@
 {% endif %}
 
 <!-- Media Preview Modal -->
-<div id="media-preview-modal" class="modal-overlay" style="display: none;" onclick="closePreview(event)">
+<div id="media-preview-modal" class="modal-overlay" onclick="closePreview(event)">
     <div class="modal-content" onclick="event.stopPropagation()">
         <button class="modal-close" onclick="closePreview(event)">&times;</button>
         <div id="modal-body"></div>
@@ -92,7 +92,7 @@ if (typeof window.openPreview === 'undefined') {
             body.appendChild(video);
         }
         
-        modal.style.display = 'flex';
+        modal.classList.add('active');
         document.body.style.overflow = 'hidden';
     };
 
@@ -101,8 +101,8 @@ if (typeof window.openPreview === 'undefined') {
         const modal = document.getElementById('media-preview-modal');
         const body = document.getElementById('modal-body');
         
-        if (modal) modal.style.display = 'none';
-        if (body) body.innerHTML = ''; // clear content to stop video playing
+        if (modal) modal.classList.remove('active');
+        if (body) body.innerHTML = '';
         document.body.style.overflow = '';
     };
 

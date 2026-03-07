@@ -1,3 +1,4 @@
+use chrono::NaiveDate;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use serde::Serialize;
@@ -72,9 +73,13 @@ pub fn messages_over_time(
     Ok(rows)
 }
 
-pub fn top_contacts(conn: &Connection, limit: u32) -> anyhow::Result<Vec<(String, String, i64)>> {
+pub fn top_contacts(
+    conn: &Connection,
+    limit: u32,
+) -> anyhow::Result<Vec<(i64, String, String, i64)>> {
     let mut stmt = conn.prepare(
-        "SELECT COALESCE(ct.display_name, ct.handle) AS name,
+        "SELECT ct.id,
+                COALESCE(ct.display_name, ct.handle) AS name,
                 ct.handle,
                 COUNT(m.id) AS cnt
          FROM contacts ct
@@ -85,7 +90,9 @@ pub fn top_contacts(conn: &Connection, limit: u32) -> anyhow::Result<Vec<(String
     )?;
 
     let rows = stmt
-        .query_map([limit], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+        .query_map([limit], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })?
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(rows)
@@ -1267,6 +1274,330 @@ pub fn get_hourly_message_stats(
             pct: (counts[h as usize] as f64 / max_count) * 100.0,
         })
         .collect();
+
+    Ok(stats)
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContactBasicInfo {
+    pub id: i64,
+    pub name: String,
+    pub handle: String,
+    pub has_photo: bool,
+}
+
+pub fn get_contact_basic_info(
+    conn: &Connection,
+    contact_id: i64,
+) -> anyhow::Result<Option<ContactBasicInfo>> {
+    let info = conn
+        .query_row(
+            "SELECT id,
+                    COALESCE(display_name, handle, 'Unknown') AS name,
+                    handle,
+                    (photo IS NOT NULL) AS has_photo
+             FROM contacts
+             WHERE id = ?1",
+            [contact_id],
+            |row| {
+                Ok(ContactBasicInfo {
+                    id: row.get(0)?,
+                    name: row.get(1)?,
+                    handle: row.get(2)?,
+                    has_photo: row.get::<_, bool>(3).unwrap_or(false),
+                })
+            },
+        )
+        .optional()?;
+
+    Ok(info)
+}
+
+pub fn get_contact_conversation_id(
+    conn: &Connection,
+    contact_id: i64,
+) -> anyhow::Result<Option<i64>> {
+    let conversation_id = conn
+        .query_row(
+            "SELECT c.id
+             FROM conversation_participants cp
+             JOIN conversations c ON c.id = cp.conversation_id
+             WHERE cp.contact_id = ?1
+               AND c.is_group = 0
+             ORDER BY c.last_message_date DESC, c.id DESC
+             LIMIT 1",
+            [contact_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    Ok(conversation_id)
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct ContactMessageCounts {
+    pub sent: i64,
+    pub received: i64,
+}
+
+pub fn get_contact_message_counts(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<ContactMessageCounts> {
+    let counts = conn.query_row(
+        "SELECT COALESCE(SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END), 0) AS sent,
+                COALESCE(SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END), 0) AS received
+         FROM messages
+         WHERE conversation_id = ?1
+           AND is_reaction = 0",
+        [conversation_id],
+        |row| {
+            Ok(ContactMessageCounts {
+                sent: row.get(0)?,
+                received: row.get(1)?,
+            })
+        },
+    )?;
+
+    Ok(counts)
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct ContactDateRange {
+    pub first_message: Option<String>,
+    pub last_message: Option<String>,
+}
+
+pub fn get_contact_first_last_dates(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<ContactDateRange> {
+    let range = conn.query_row(
+        "SELECT strftime('%Y-%m-%d', MIN(date_unix), 'unixepoch', 'localtime'),
+                strftime('%Y-%m-%d', MAX(date_unix), 'unixepoch', 'localtime')
+         FROM messages
+         WHERE conversation_id = ?1
+           AND is_reaction = 0",
+        [conversation_id],
+        |row| {
+            Ok(ContactDateRange {
+                first_message: row.get(0)?,
+                last_message: row.get(1)?,
+            })
+        },
+    )?;
+
+    Ok(range)
+}
+
+pub fn get_contact_longest_streak(conn: &Connection, conversation_id: i64) -> anyhow::Result<i64> {
+    let mut stmt = conn.prepare(
+        "SELECT day
+         FROM (
+             SELECT strftime('%Y-%m-%d', date_unix, 'unixepoch', 'localtime') AS day,
+                    SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END) AS sent,
+                    SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END) AS received
+             FROM messages
+             WHERE conversation_id = ?1
+               AND is_reaction = 0
+             GROUP BY day
+         )
+         WHERE sent > 0 AND received > 0
+         ORDER BY day",
+    )?;
+
+    let days = stmt
+        .query_map([conversation_id], |row| row.get::<_, String>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut longest = 0i64;
+    let mut current = 0i64;
+    let mut previous_day: Option<NaiveDate> = None;
+
+    for day in days {
+        let parsed_day = match NaiveDate::parse_from_str(&day, "%Y-%m-%d") {
+            Ok(day) => day,
+            Err(_) => continue,
+        };
+
+        current = if let Some(previous) = previous_day {
+            if parsed_day.signed_duration_since(previous).num_days() == 1 {
+                current + 1
+            } else {
+                1
+            }
+        } else {
+            1
+        };
+
+        longest = longest.max(current);
+        previous_day = Some(parsed_day);
+    }
+
+    Ok(longest)
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct ContactInitiativeStats {
+    pub my_starts: i64,
+    pub their_starts: i64,
+}
+
+pub fn get_contact_initiative_stats(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<ContactInitiativeStats> {
+    let stats = conn.query_row(
+        "WITH ordered AS (
+             SELECT id,
+                    date_unix,
+                    is_from_me,
+                    LAG(date_unix) OVER (ORDER BY date_unix, id) AS prev_date
+             FROM messages
+             WHERE conversation_id = ?1
+               AND is_reaction = 0
+         ),
+         starters AS (
+             SELECT is_from_me
+             FROM ordered
+             WHERE prev_date IS NULL OR (date_unix - prev_date) > 14400
+         )
+         SELECT COALESCE(SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END), 0)
+         FROM starters",
+        [conversation_id],
+        |row| {
+            Ok(ContactInitiativeStats {
+                my_starts: row.get(0)?,
+                their_starts: row.get(1)?,
+            })
+        },
+    )?;
+
+    Ok(stats)
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct DayOfWeekStat {
+    pub day: u8,
+    pub label: String,
+    pub count: i64,
+    pub pct: f64,
+}
+
+pub fn get_contact_day_of_week_stats(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Vec<DayOfWeekStat>> {
+    let mut stmt = conn.prepare(
+        "SELECT CAST(strftime('%w', date_unix, 'unixepoch', 'localtime') AS INTEGER) AS weekday,
+                COUNT(*) AS cnt
+         FROM messages
+         WHERE conversation_id = ?1
+           AND is_reaction = 0
+         GROUP BY weekday",
+    )?;
+
+    let rows = stmt
+        .query_map([conversation_id], |row| {
+            Ok((row.get::<_, u8>(0)?, row.get::<_, i64>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut counts = [0i64; 7];
+    for (weekday, count) in rows {
+        counts[weekday as usize] = count;
+    }
+
+    let ordered_days = [
+        (1u8, "Mon"),
+        (2u8, "Tue"),
+        (3u8, "Wed"),
+        (4u8, "Thu"),
+        (5u8, "Fri"),
+        (6u8, "Sat"),
+        (0u8, "Sun"),
+    ];
+    let max_count = ordered_days
+        .iter()
+        .map(|(weekday, _)| counts[*weekday as usize])
+        .max()
+        .unwrap_or(0)
+        .max(1) as f64;
+
+    let stats = ordered_days
+        .into_iter()
+        .enumerate()
+        .map(|(index, (weekday, label))| DayOfWeekStat {
+            day: index as u8,
+            label: label.to_string(),
+            count: counts[weekday as usize],
+            pct: (counts[weekday as usize] as f64 / max_count) * 100.0,
+        })
+        .collect();
+
+    Ok(stats)
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct ContactReactionCounts {
+    pub my_reactions: i64,
+    pub their_reactions: i64,
+}
+
+pub fn get_contact_reaction_counts(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<ContactReactionCounts> {
+    let counts = conn.query_row(
+        "SELECT COALESCE(SUM(CASE WHEN is_from_me = 1 AND is_reaction = 1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN is_from_me = 0 AND is_reaction = 1 THEN 1 ELSE 0 END), 0)
+         FROM messages
+         WHERE conversation_id = ?1",
+        [conversation_id],
+        |row| {
+            Ok(ContactReactionCounts {
+                my_reactions: row.get(0)?,
+                their_reactions: row.get(1)?,
+            })
+        },
+    )?;
+
+    Ok(counts)
+}
+
+#[derive(Debug, Serialize, Default)]
+pub struct ContactTrendStats {
+    pub recent_count: i64,
+    pub prior_count: i64,
+}
+
+pub fn get_contact_trend_stats(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<ContactTrendStats> {
+    let stats = conn.query_row(
+        "SELECT
+             COALESCE(SUM(CASE
+                 WHEN date_unix >= CAST(strftime('%s', 'now', '-90 days') AS INTEGER) THEN 1
+                 ELSE 0
+             END), 0) AS recent_count,
+             COALESCE(SUM(CASE
+                 WHEN date_unix >= CAST(strftime('%s', 'now', '-180 days') AS INTEGER)
+                  AND date_unix < CAST(strftime('%s', 'now', '-90 days') AS INTEGER) THEN 1
+                 ELSE 0
+             END), 0) AS prior_count
+         FROM messages
+         WHERE conversation_id = ?1
+           AND is_reaction = 0",
+        [conversation_id],
+        |row| {
+            Ok(ContactTrendStats {
+                recent_count: row.get(0)?,
+                prior_count: row.get(1)?,
+            })
+        },
+    )?;
 
     Ok(stats)
 }

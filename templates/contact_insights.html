@@ -1,0 +1,163 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="im-sidebar">
+    <div class="im-sidebar-header">
+        <h1>iMessage</h1>
+        <input type="search"
+               name="q"
+               class="im-search"
+               placeholder="Search"
+               hx-get="/partials/unified-search"
+               hx-trigger="input changed delay:300ms, search"
+               hx-target="#conversations-list"
+               hx-swap="innerHTML"
+               hx-push-url="false">
+    </div>
+    <div id="conversations-list" class="im-conversation-list">
+    </div>
+</div>
+<div class="im-main">
+    <div style="padding: 20px; overflow-y: auto; height: 100%;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                {% if has_photo %}
+                <img src="/contacts/{{ contact_id }}/photo" alt="{{ contact_name }}" style="width: 72px; height: 72px; border-radius: 20px; object-fit: cover; background: var(--im-bg-secondary);">
+                {% else %}
+                <div style="width: 72px; height: 72px; border-radius: 20px; background: var(--im-bg-secondary); display: flex; align-items: center; justify-content: center; font-size: 28px; color: var(--im-text-secondary);">
+                    {{ contact_initial }}
+                </div>
+                {% endif %}
+                <div>
+                    <div style="font-size: 0.9rem; color: var(--im-text-secondary); margin-bottom: 0.35rem;"><a href="/analytics" style="color: var(--im-text-secondary); text-decoration: none;">Analytics</a> / Contact Insights</div>
+                    <h1 style="font-size: 2rem; margin: 0 0 0.35rem;">{{ contact_name }}</h1>
+                    <div style="color: var(--im-text-secondary);">{{ contact_handle }}</div>
+                </div>
+            </div>
+            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                {% if has_conversation %}
+                <a href="{{ conversation_link }}" style="padding: 0.75rem 1rem; border-radius: 999px; text-decoration: none; background: var(--im-accent); color: white; font-weight: 600;">Open Conversation</a>
+                {% endif %}
+                <a href="/analytics" style="padding: 0.75rem 1rem; border-radius: 999px; text-decoration: none; background: var(--im-bg-secondary); color: var(--im-text-primary); font-weight: 600;">Back to Analytics</a>
+            </div>
+        </div>
+
+        {% if !has_conversation %}
+        <section style="background: var(--im-bg-secondary); border-radius: 16px; padding: 1.25rem; margin-bottom: 1.5rem;">
+            <h2 style="font-size: 1.1rem; margin: 0 0 0.5rem;">No one-on-one conversation yet</h2>
+            <p style="margin: 0; color: var(--im-text-secondary);">This contact exists in your archive, but there is no non-group conversation available to analyze.</p>
+        </section>
+        {% endif %}
+
+        <section style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+            <article style="background: var(--im-bg-secondary); padding: 1rem; border-radius: 14px;">
+                <div style="font-size: 0.85rem; color: var(--im-text-secondary); margin-bottom: 0.35rem;">Sent to them</div>
+                <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.2rem;">{{ sent_count }}</div>
+                <div style="font-size: 0.85rem; color: var(--im-text-secondary);">{{ sent_ratio }} of total</div>
+            </article>
+            <article style="background: var(--im-bg-secondary); padding: 1rem; border-radius: 14px;">
+                <div style="font-size: 0.85rem; color: var(--im-text-secondary); margin-bottom: 0.35rem;">Received from them</div>
+                <div style="font-size: 2rem; font-weight: 700; margin-bottom: 0.2rem;">{{ received_count }}</div>
+                <div style="font-size: 0.85rem; color: var(--im-text-secondary);">{{ received_ratio }} of total</div>
+            </article>
+            <article style="background: var(--im-bg-secondary); padding: 1rem; border-radius: 14px;">
+                <div style="font-size: 0.85rem; color: var(--im-text-secondary); margin-bottom: 0.35rem;">First message</div>
+                <div style="font-size: 1.3rem; font-weight: 700; margin-bottom: 0.2rem;">{{ first_message }}</div>
+                <div style="font-size: 0.85rem; color: var(--im-text-secondary);">Archive start</div>
+            </article>
+            <article style="background: var(--im-bg-secondary); padding: 1rem; border-radius: 14px;">
+                <div style="font-size: 0.85rem; color: var(--im-text-secondary); margin-bottom: 0.35rem;">Last message</div>
+                <div style="font-size: 1.3rem; font-weight: 700; margin-bottom: 0.2rem;">{{ last_message }}</div>
+                <div style="font-size: 0.85rem; color: var(--im-text-secondary);">Most recent contact</div>
+            </article>
+        </section>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(320px, 0.8fr); gap: 1.5rem; margin-bottom: 1.5rem;">
+            <section style="background: var(--im-bg-secondary); border-radius: 16px; padding: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                    <h2 style="font-size: 1.1rem; margin: 0;">Initiative Ratio</h2>
+                    <div style="font-size: 0.9rem; color: var(--im-text-secondary);">First message after 4h+ gap</div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr auto 1fr; gap: 0.75rem; align-items: center; margin-bottom: 1rem;">
+                    <div>
+                        <div style="font-size: 1.5rem; font-weight: 700;">{{ my_starts }}</div>
+                        <div style="color: var(--im-text-secondary); font-size: 0.9rem;">You started</div>
+                    </div>
+                    <div style="font-size: 0.85rem; color: var(--im-text-secondary);">vs</div>
+                    <div style="text-align: right;">
+                        <div style="font-size: 1.5rem; font-weight: 700;">{{ their_starts }}</div>
+                        <div style="color: var(--im-text-secondary); font-size: 0.9rem;">They started</div>
+                    </div>
+                </div>
+                <div style="height: 14px; border-radius: 999px; overflow: hidden; background: var(--im-bg-tertiary); display: flex; margin-bottom: 0.75rem;">
+                    <div style="width: {{ my_initiative_pct }}%; background: var(--im-accent);"></div>
+                    <div style="width: {{ their_initiative_pct }}%; background: color-mix(in srgb, var(--im-accent) 45%, var(--im-bg-tertiary));"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; gap: 1rem; color: var(--im-text-secondary); font-size: 0.85rem; margin-bottom: 0.75rem;">
+                    <span>You: {{ my_initiative_label }}</span>
+                    <span>Them: {{ their_initiative_label }}</span>
+                </div>
+                <p style="margin: 0; color: var(--im-text-secondary);">{{ initiative_summary }}</p>
+            </section>
+
+            <section style="background: var(--im-bg-secondary); border-radius: 16px; padding: 1.25rem;">
+                <h2 style="font-size: 1.1rem; margin: 0 0 1rem;">Streak</h2>
+                <div style="font-size: 2.4rem; font-weight: 700; margin-bottom: 0.35rem;">{{ longest_streak }}</div>
+                <div style="font-size: 0.95rem; color: var(--im-text-secondary); margin-bottom: 1rem;">Longest run of mutual messaging days</div>
+                <div style="display: inline-flex; padding: 0.45rem 0.7rem; border-radius: 999px; background: var(--im-bg-tertiary); color: var(--im-text-secondary); font-size: 0.85rem;">{{ longest_streak }} {{ streak_label }}</div>
+            </section>
+        </div>
+
+        <div style="display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(280px, 0.9fr); gap: 1.5rem; margin-bottom: 1.5rem;">
+            <section style="background: var(--im-bg-secondary); border-radius: 16px; padding: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                    <h2 style="font-size: 1.1rem; margin: 0;">Day-of-Week Activity</h2>
+                    <div style="font-size: 0.9rem; color: var(--im-text-secondary);">When this thread is busiest</div>
+                </div>
+                <div class="im-hourly-chart" style="height: 180px;">
+                    {% for bar in day_bars %}
+                    <div class="im-chart-col" title="{{ bar.label }}: {{ bar.count }} messages">
+                        <div class="im-chart-bar{% if bar.is_peak %} im-chart-bar--peak{% endif %}" style="height: {{ bar.pct }}%;"></div>
+                        <span class="im-chart-label" style="bottom: -22px;">{{ bar.label }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </section>
+
+            <section style="background: var(--im-bg-secondary); border-radius: 16px; padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem;">
+                <div>
+                    <h2 style="font-size: 1.1rem; margin: 0 0 1rem;">Reaction Frequency</h2>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <div style="background: var(--im-bg-tertiary); border-radius: 12px; padding: 0.9rem;">
+                            <div style="font-size: 1.6rem; font-weight: 700;">{{ my_reactions }}</div>
+                            <div style="color: var(--im-text-secondary); font-size: 0.9rem;">Your reactions</div>
+                        </div>
+                        <div style="background: var(--im-bg-tertiary); border-radius: 12px; padding: 0.9rem;">
+                            <div style="font-size: 1.6rem; font-weight: 700;">{{ their_reactions }}</div>
+                            <div style="color: var(--im-text-secondary); font-size: 0.9rem;">Their reactions</div>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <h2 style="font-size: 1.1rem; margin: 0 0 0.75rem;">Communication Trend</h2>
+                    <div style="display: inline-flex; align-items: center; gap: 0.5rem; padding: 0.45rem 0.7rem; border-radius: 999px; background: var(--im-bg-tertiary); margin-bottom: 0.75rem;">
+                        <span style="font-size: 1rem;">{% if trend_label == "Increasing" %}↑{% elif trend_label == "Declining" %}↓{% else %}→{% endif %}</span>
+                        <span style="font-weight: 600;">{{ trend_label }}</span>
+                    </div>
+                    <p style="margin: 0 0 0.75rem; color: var(--im-text-secondary);">{{ trend_summary }}</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <div style="background: var(--im-bg-tertiary); border-radius: 12px; padding: 0.9rem;">
+                            <div style="font-size: 1.3rem; font-weight: 700;">{{ trend_recent }}</div>
+                            <div style="color: var(--im-text-secondary); font-size: 0.85rem;">Last 90 days</div>
+                        </div>
+                        <div style="background: var(--im-bg-tertiary); border-radius: 12px; padding: 0.9rem;">
+                            <div style="font-size: 1.3rem; font-weight: 700;">{{ trend_prior }}</div>
+                            <div style="color: var(--im-text-secondary); font-size: 0.85rem;">Previous 90 days</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+{% endblock %}

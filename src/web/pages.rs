@@ -372,6 +372,7 @@ struct TopConversation {
 #[derive(Debug)]
 struct TopContact {
     rank: usize,
+    id: i64,
     name: String,
     handle: String,
     count: i64,
@@ -420,6 +421,92 @@ struct AnalyticsTemplate {
     att_total_size: String,
 }
 
+#[derive(Debug)]
+struct ContactInsightDayBar {
+    label: String,
+    count: i64,
+    pct: f64,
+    is_peak: bool,
+}
+
+#[derive(Template)]
+#[template(path = "contact_insights.html")]
+struct ContactInsightsTemplate {
+    title: String,
+    contact_id: i64,
+    contact_name: String,
+    contact_initial: String,
+    contact_handle: String,
+    has_photo: bool,
+    has_conversation: bool,
+    conversation_link: String,
+    sent_count: i64,
+    received_count: i64,
+    sent_ratio: String,
+    received_ratio: String,
+    first_message: String,
+    last_message: String,
+    longest_streak: i64,
+    streak_label: String,
+    my_starts: i64,
+    their_starts: i64,
+    my_initiative_pct: f64,
+    their_initiative_pct: f64,
+    my_initiative_label: String,
+    their_initiative_label: String,
+    initiative_summary: String,
+    day_bars: Vec<ContactInsightDayBar>,
+    my_reactions: i64,
+    their_reactions: i64,
+    trend_label: String,
+    trend_summary: String,
+    trend_recent: i64,
+    trend_prior: i64,
+}
+
+fn format_ratio(count: i64, total: i64) -> String {
+    if total <= 0 {
+        "0%".to_string()
+    } else {
+        format!("{:.0}%", (count as f64 / total as f64) * 100.0)
+    }
+}
+
+fn build_initiative_summary(my_starts: i64, their_starts: i64) -> String {
+    match my_starts.cmp(&their_starts) {
+        std::cmp::Ordering::Greater => "You usually reopen the conversation first.".to_string(),
+        std::cmp::Ordering::Less => "They usually reopen the conversation first.".to_string(),
+        std::cmp::Ordering::Equal if my_starts == 0 => "No restart moments yet.".to_string(),
+        std::cmp::Ordering::Equal => "You both start conversations equally often.".to_string(),
+    }
+}
+
+fn build_trend(trend: &queries::ContactTrendStats) -> (String, String) {
+    match trend.recent_count.cmp(&trend.prior_count) {
+        std::cmp::Ordering::Greater => (
+            "Increasing".to_string(),
+            format!(
+                "{} messages in the last 90 days vs {} in the previous 90.",
+                trend.recent_count, trend.prior_count
+            ),
+        ),
+        std::cmp::Ordering::Less => (
+            "Declining".to_string(),
+            format!(
+                "{} messages in the last 90 days vs {} in the previous 90.",
+                trend.recent_count, trend.prior_count
+            ),
+        ),
+        std::cmp::Ordering::Equal => (
+            "Stable".to_string(),
+            format!(
+                "{} messages in both the last 90 days and the prior 90.",
+                trend.recent_count
+            ),
+        ),
+    }
+}
+
 pub async fn analytics(State(state): State<AppState>) -> impl IntoResponse {
     let conn = state.db.lock().unwrap();
 
@@ -448,8 +535,9 @@ pub async fn analytics(State(state): State<AppState>) -> impl IntoResponse {
     let top_contacts: Vec<TopContact> = contacts
         .into_iter()
         .enumerate()
-        .map(|(i, (name, handle, count))| TopContact {
+        .map(|(i, (id, name, handle, count))| TopContact {
             rank: i + 1,
+            id,
             name,
             handle,
             count,
@@ -503,6 +591,201 @@ pub async fn analytics(State(state): State<AppState>) -> impl IntoResponse {
         att_other: att.other,
         att_total_size: format_bytes(att.total_bytes),
     };
+    Html(t.render().unwrap_or_default())
+}
+
+pub async fn contact_insights(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> impl IntoResponse {
+    let conn = state.db.lock().unwrap();
+
+    let contact = queries::get_contact_basic_info(&conn, id)
+        .unwrap_or_default()
+        .unwrap_or(queries::ContactBasicInfo {
+            id,
+            name: "Unknown".to_string(),
+            handle: "Unknown".to_string(),
+            has_photo: false,
+        });
+    let conversation_id = queries::get_contact_conversation_id(&conn, id).unwrap_or_default();
+
+    let (
+        sent_count,
+        received_count,
+        first_message,
+        last_message,
+        longest_streak,
+        my_starts,
+        their_starts,
+        day_bars,
+        my_reactions,
+        their_reactions,
+        trend_recent,
+        trend_prior,
+        trend_label,
+        trend_summary,
+    ) = if let Some(conversation_id) = conversation_id {
+        let message_counts =
+            queries::get_contact_message_counts(&conn, conversation_id).unwrap_or_default();
+        let date_range =
+            queries::get_contact_first_last_dates(&conn, conversation_id).unwrap_or_default();
+        let longest_streak =
+            queries::get_contact_longest_streak(&conn, conversation_id).unwrap_or(0);
+        let initiative =
+            queries::get_contact_initiative_stats(&conn, conversation_id).unwrap_or_default();
+        let weekday_stats =
+            queries::get_contact_day_of_week_stats(&conn, conversation_id).unwrap_or_default();
+        let max_day_count = weekday_stats.iter().map(|day| day.count).max().unwrap_or(0);
+        let day_bars = weekday_stats
+            .into_iter()
+            .map(|day| ContactInsightDayBar {
+                label: day.label,
+                count: day.count,
+                pct: day.pct,
+                is_peak: max_day_count > 0 && day.count == max_day_count,
+            })
+            .collect();
+        let reactions =
+            queries::get_contact_reaction_counts(&conn, conversation_id).unwrap_or_default();
+        let trend = queries::get_contact_trend_stats(&conn, conversation_id).unwrap_or_default();
+        let (trend_label, trend_summary) = build_trend(&trend);
+
+        (
+            message_counts.sent,
+            message_counts.received,
+            date_range
+                .first_message
+                .unwrap_or_else(|| "N/A".to_string()),
+            date_range.last_message.unwrap_or_else(|| "N/A".to_string()),
+            longest_streak,
+            initiative.my_starts,
+            initiative.their_starts,
+            day_bars,
+            reactions.my_reactions,
+            reactions.their_reactions,
+            trend.recent_count,
+            trend.prior_count,
+            trend_label,
+            trend_summary,
+        )
+    } else {
+        (
+            0,
+            0,
+            "N/A".to_string(),
+            "N/A".to_string(),
+            0,
+            0,
+            0,
+            vec![
+                ContactInsightDayBar {
+                    label: "Mon".to_string(),
+                    count: 0,
+                    pct: 0.0,
+                    is_peak: false,
+                },
+                ContactInsightDayBar {
+                    label: "Tue".to_string(),
+                    count: 0,
+                    pct: 0.0,
+                    is_peak: false,
+                },
+                ContactInsightDayBar {
+                    label: "Wed".to_string(),
+                    count: 0,
+                    pct: 0.0,
+                    is_peak: false,
+                },
+                ContactInsightDayBar {
+                    label: "Thu".to_string(),
+                    count: 0,
+                    pct: 0.0,
+                    is_peak: false,
+                },
+                ContactInsightDayBar {
+                    label: "Fri".to_string(),
+                    count: 0,
+                    pct: 0.0,
+                    is_peak: false,
+                },
+                ContactInsightDayBar {
+                    label: "Sat".to_string(),
+                    count: 0,
+                    pct: 0.0,
+                    is_peak: false,
+                },
+                ContactInsightDayBar {
+                    label: "Sun".to_string(),
+                    count: 0,
+                    pct: 0.0,
+                    is_peak: false,
+                },
+            ],
+            0,
+            0,
+            0,
+            0,
+            "Stable".to_string(),
+            "No one-on-one conversation data available yet.".to_string(),
+        )
+    };
+
+    let total_messages = sent_count + received_count;
+    let total_starts = my_starts + their_starts;
+    let contact_initial = contact
+        .name
+        .chars()
+        .next()
+        .map(|ch| ch.to_string())
+        .unwrap_or_else(|| "?".to_string());
+    let t = ContactInsightsTemplate {
+        title: format!("{} Insights", contact.name),
+        contact_id: contact.id,
+        contact_name: contact.name,
+        contact_initial,
+        contact_handle: contact.handle,
+        has_photo: contact.has_photo,
+        has_conversation: conversation_id.is_some(),
+        conversation_link: conversation_id
+            .map(|conversation_id| format!("/conversations/{conversation_id}"))
+            .unwrap_or_default(),
+        sent_count,
+        received_count,
+        sent_ratio: format_ratio(sent_count, total_messages),
+        received_ratio: format_ratio(received_count, total_messages),
+        first_message,
+        last_message,
+        longest_streak,
+        streak_label: if longest_streak == 1 {
+            "day".to_string()
+        } else {
+            "days".to_string()
+        },
+        my_starts,
+        their_starts,
+        my_initiative_pct: if total_starts > 0 {
+            (my_starts as f64 / total_starts as f64) * 100.0
+        } else {
+            50.0
+        },
+        their_initiative_pct: if total_starts > 0 {
+            (their_starts as f64 / total_starts as f64) * 100.0
+        } else {
+            50.0
+        },
+        my_initiative_label: format_ratio(my_starts, total_starts),
+        their_initiative_label: format_ratio(their_starts, total_starts),
+        initiative_summary: build_initiative_summary(my_starts, their_starts),
+        day_bars,
+        my_reactions,
+        their_reactions,
+        trend_label,
+        trend_summary,
+        trend_recent,
+        trend_prior,
+    };
+
     Html(t.render().unwrap_or_default())
 }
 

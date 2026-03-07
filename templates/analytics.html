@@ -107,7 +107,7 @@
                         {% for c in top_contacts %}
                         <tr style="border-bottom: 1px solid var(--im-border);">
                             <td style="padding: 8px;">{{ c.rank }}</td>
-                            <td style="padding: 8px;">{{ c.name }}</td>
+                            <td style="padding: 8px;"><a href="/contacts/{{ c.id }}" style="color: var(--im-accent); text-decoration: none;">{{ c.name }}</a></td>
                             <td style="padding: 8px;">{{ c.handle }}</td>
                             <td style="padding: 8px;">{{ c.count }}</td>
                         </tr>

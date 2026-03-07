@@ -18,6 +18,7 @@ pub fn create_db(path: &Path) -> anyhow::Result<Connection> {
     let conn = Connection::open(path)?;
     set_pragmas(&conn)?;
     schema::create_all_tables(&conn)?;
+    queries::merge_duplicate_conversations(&conn)?;
     Ok(conn)
 }
 
@@ -25,6 +26,7 @@ pub fn open_existing(path: &Path) -> anyhow::Result<Connection> {
     let conn = Connection::open(path)?;
     set_pragmas(&conn)?;
     schema::create_all_tables(&conn)?;
+    queries::merge_duplicate_conversations(&conn)?;
     Ok(conn)
 }
 
@@ -33,6 +35,7 @@ pub fn drop_and_recreate(path: &Path) -> anyhow::Result<Connection> {
     set_pragmas(&conn)?;
     schema::drop_all_tables(&conn)?;
     schema::create_all_tables(&conn)?;
+    queries::merge_duplicate_conversations(&conn)?;
     Ok(conn)
 }
 

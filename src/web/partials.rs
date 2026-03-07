@@ -15,6 +15,13 @@ use super::format::{
 };
 use super::pages::ConversationRow;
 
+fn canonical_conversation_id(conn: &rusqlite::Connection, conversation_id: i64) -> i64 {
+    queries::resolve_canonical_conversation_id(conn, conversation_id)
+        .ok()
+        .flatten()
+        .unwrap_or(conversation_id)
+}
+
 #[derive(Deserialize)]
 pub struct ConversationPanelQuery {
     pub id: i64,
@@ -521,8 +528,8 @@ pub async fn conversation_panel_partial(
     State(state): State<AppState>,
     Query(params): Query<ConversationPanelQuery>,
 ) -> impl IntoResponse {
-    let id = params.id;
     let conn = state.db.lock().unwrap();
+    let id = canonical_conversation_id(&conn, params.id);
     let info = queries::get_conversation_info(&conn, id);
     let primary_contact_id =
         queries::get_primary_contact_id_for_conversation(&conn, id).unwrap_or_default();
@@ -787,9 +794,8 @@ pub async fn messages_partial(
     State(state): State<AppState>,
     Query(params): Query<MessagesQuery>,
 ) -> impl IntoResponse {
-    let conversation_id = params.conversation_id.unwrap_or(0);
-
     let conn = state.db.lock().unwrap();
+    let conversation_id = canonical_conversation_id(&conn, params.conversation_id.unwrap_or(0));
     let is_group: bool = conn
         .query_row(
             "SELECT is_group FROM conversations WHERE id = ?1",
@@ -1243,12 +1249,12 @@ pub async fn conversation_attachments_partial(
     State(state): State<AppState>,
     Query(params): Query<ConversationAttachmentsQuery>,
 ) -> impl IntoResponse {
-    let conversation_id = params.conversation_id;
     let page = params.page.unwrap_or(0);
     let offset = (page * ATTACHMENTS_PER_PAGE) as i64;
     let limit = (ATTACHMENTS_PER_PAGE + 1) as i64;
 
     let conn = state.db.lock().unwrap();
+    let conversation_id = canonical_conversation_id(&conn, params.conversation_id);
     let rows = queries::conversation_attachments(&conn, conversation_id, offset, limit)
         .unwrap_or_default();
 

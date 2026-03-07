@@ -2,6 +2,7 @@ use chrono::NaiveDate;
 use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use serde::Serialize;
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize)]
 pub struct MessageRow {
@@ -160,6 +161,262 @@ pub fn get_primary_contact_id_for_conversation(
         .optional()?;
 
     Ok(contact_id)
+}
+
+pub fn resolve_canonical_conversation_id(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Option<i64>> {
+    let canonical_id = conn
+        .query_row(
+            "SELECT canonical_conversation_id
+             FROM conversation_aliases
+             WHERE source_conversation_id = ?1",
+            [conversation_id],
+            |row| row.get(0),
+        )
+        .optional()?
+        .flatten();
+
+    if canonical_id.is_some() {
+        return Ok(canonical_id);
+    }
+
+    let existing_id = conn
+        .query_row(
+            "SELECT id FROM conversations WHERE id = ?1",
+            [conversation_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    Ok(existing_id)
+}
+
+#[derive(Debug)]
+struct MergeConversationRow {
+    id: i64,
+    is_group: bool,
+    display_name: Option<String>,
+    service: Option<String>,
+    group_photo_path: Option<String>,
+    last_message_date: Option<i64>,
+}
+
+fn merge_key_for_conversation(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Option<String>> {
+    let conversation = conn
+        .query_row(
+            "SELECT is_group FROM conversations WHERE id = ?1",
+            [conversation_id],
+            |row| row.get::<_, bool>(0),
+        )
+        .optional()?;
+
+    let Some(is_group) = conversation else {
+        return Ok(None);
+    };
+
+    let mut stmt = conn.prepare(
+        "SELECT contact_id
+         FROM conversation_participants
+         WHERE conversation_id = ?1
+         ORDER BY contact_id",
+    )?;
+    let participants = stmt
+        .query_map([conversation_id], |row| row.get::<_, i64>(0))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if participants.is_empty() {
+        return Ok(None);
+    }
+
+    let key = if is_group {
+        participants
+            .iter()
+            .map(|id| id.to_string())
+            .collect::<Vec<_>>()
+            .join(",")
+    } else {
+        format!("solo:{}", participants[0])
+    };
+
+    Ok(Some(key))
+}
+
+fn refresh_conversation_rollups(conn: &Connection) -> anyhow::Result<()> {
+    conn.execute(
+        "UPDATE conversations
+         SET participant_count = (
+                 SELECT COUNT(*)
+                 FROM conversation_participants cp
+                 WHERE cp.conversation_id = conversations.id
+             ),
+             message_count = (
+                 SELECT COUNT(*)
+                 FROM messages
+                 WHERE messages.conversation_id = conversations.id
+                   AND messages.is_reaction = FALSE
+             ),
+             last_message_date = (
+                 SELECT MAX(date_unix)
+                 FROM messages
+                 WHERE messages.conversation_id = conversations.id
+             )",
+        [],
+    )?;
+
+    Ok(())
+}
+
+pub fn merge_duplicate_conversations(conn: &Connection) -> anyhow::Result<()> {
+    let mut stmt = conn.prepare(
+        "SELECT id, is_group, display_name, service, group_photo_path, last_message_date
+         FROM conversations
+         ORDER BY id",
+    )?;
+    let conversations = stmt
+        .query_map([], |row| {
+            Ok(MergeConversationRow {
+                id: row.get(0)?,
+                is_group: row.get(1)?,
+                display_name: row.get(2)?,
+                service: row.get(3)?,
+                group_photo_path: row.get(4)?,
+                last_message_date: row.get(5)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut grouped_ids: HashMap<String, Vec<i64>> = HashMap::new();
+    for conversation in &conversations {
+        if let Some(key) = merge_key_for_conversation(conn, conversation.id)? {
+            grouped_ids.entry(key).or_default().push(conversation.id);
+        }
+    }
+
+    let conversation_by_id: HashMap<i64, &MergeConversationRow> = conversations
+        .iter()
+        .map(|conversation| (conversation.id, conversation))
+        .collect();
+
+    let tx = conn.unchecked_transaction()?;
+
+    for ids in grouped_ids.values() {
+        if ids.len() <= 1 {
+            continue;
+        }
+
+        let mut canonical_id = *ids.iter().min().unwrap_or(&ids[0]);
+        if !conversation_by_id.contains_key(&canonical_id) {
+            canonical_id = ids[0];
+        }
+
+        let mut latest_named: Option<&MergeConversationRow> = None;
+        let mut latest_with_photo: Option<&MergeConversationRow> = None;
+        let mut latest_service: Option<&MergeConversationRow> = None;
+
+        for id in ids {
+            let Some(conversation) = conversation_by_id.get(id).copied() else {
+                continue;
+            };
+
+            if conversation
+                .display_name
+                .as_ref()
+                .is_some_and(|name| !name.trim().is_empty())
+                && latest_named.is_none_or(|current| {
+                    conversation.last_message_date.unwrap_or(0)
+                        > current.last_message_date.unwrap_or(0)
+                })
+            {
+                latest_named = Some(conversation);
+            }
+
+            if conversation.group_photo_path.is_some()
+                && latest_with_photo.is_none_or(|current| {
+                    conversation.last_message_date.unwrap_or(0)
+                        > current.last_message_date.unwrap_or(0)
+                })
+            {
+                latest_with_photo = Some(conversation);
+            }
+
+            if conversation.service.is_some()
+                && latest_service.is_none_or(|current| {
+                    conversation.last_message_date.unwrap_or(0)
+                        > current.last_message_date.unwrap_or(0)
+                })
+            {
+                latest_service = Some(conversation);
+            }
+        }
+
+        for duplicate_id in ids {
+            if *duplicate_id == canonical_id {
+                tx.execute(
+                    "DELETE FROM conversation_aliases WHERE source_conversation_id = ?1",
+                    [*duplicate_id],
+                )?;
+                continue;
+            }
+
+            tx.execute(
+                "INSERT INTO conversation_aliases (source_conversation_id, canonical_conversation_id)
+                 VALUES (?1, ?2)
+                 ON CONFLICT(source_conversation_id)
+                 DO UPDATE SET canonical_conversation_id = excluded.canonical_conversation_id",
+                rusqlite::params![duplicate_id, canonical_id],
+            )?;
+            tx.execute(
+                "UPDATE messages SET conversation_id = ?1 WHERE conversation_id = ?2",
+                rusqlite::params![canonical_id, duplicate_id],
+            )?;
+            tx.execute(
+                "INSERT OR IGNORE INTO conversation_participants (conversation_id, contact_id)
+                 SELECT ?1, contact_id
+                 FROM conversation_participants
+                 WHERE conversation_id = ?2",
+                rusqlite::params![canonical_id, duplicate_id],
+            )?;
+            tx.execute(
+                "DELETE FROM conversation_participants WHERE conversation_id = ?1",
+                [*duplicate_id],
+            )?;
+            tx.execute("DELETE FROM conversations WHERE id = ?1", [*duplicate_id])?;
+        }
+
+        let display_name = latest_named.and_then(|conversation| conversation.display_name.clone());
+        let group_photo_path =
+            latest_with_photo.and_then(|conversation| conversation.group_photo_path.clone());
+        let service = latest_service.and_then(|conversation| conversation.service.clone());
+        let is_group = conversation_by_id
+            .get(&canonical_id)
+            .map(|conversation| conversation.is_group)
+            .unwrap_or(false);
+
+        tx.execute(
+            "UPDATE conversations
+             SET display_name = COALESCE(?2, display_name),
+                 service = COALESCE(?3, service),
+                 group_photo_path = CASE WHEN ?4 THEN COALESCE(?5, group_photo_path) ELSE group_photo_path END
+             WHERE id = ?1",
+            rusqlite::params![canonical_id, display_name, service, is_group, group_photo_path],
+        )?;
+    }
+
+    tx.execute(
+        "DELETE FROM conversation_aliases
+         WHERE canonical_conversation_id NOT IN (SELECT id FROM conversations)",
+        [],
+    )?;
+
+    tx.commit()?;
+    refresh_conversation_rollups(conn)?;
+
+    Ok(())
 }
 
 pub fn get_messages(
@@ -1541,4 +1798,110 @@ pub fn get_contact_trend_stats(
     )?;
 
     Ok(stats)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use crate::db::schema;
+
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        schema::create_all_tables(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn test_merge_duplicate_conversations_group_threads() {
+        let conn = test_conn();
+
+        conn.execute(
+            "INSERT INTO contacts (id, handle, display_name) VALUES (1, '+15550000001', 'A')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO contacts (id, handle, display_name) VALUES (2, '+15550000002', 'B')",
+            [],
+        )
+        .unwrap();
+
+        conn.execute(
+            "INSERT INTO conversations (id, apple_chat_id, guid, display_name, is_group, service, last_message_date, message_count, participant_count)
+             VALUES (3, 3, 'chat3', 'Older Name', 1, 'iMessage', 100, 1, 2)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO conversations (id, apple_chat_id, guid, display_name, is_group, service, last_message_date, message_count, participant_count)
+             VALUES (1160, 1160, 'chat1160', 'Latest Name', 1, 'SMS', 200, 1, 2)",
+            [],
+        )
+        .unwrap();
+
+        for conversation_id in [3_i64, 1160_i64] {
+            conn.execute(
+                "INSERT INTO conversation_participants (conversation_id, contact_id) VALUES (?1, 1)",
+                [conversation_id],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO conversation_participants (conversation_id, contact_id) VALUES (?1, 2)",
+                [conversation_id],
+            )
+            .unwrap();
+        }
+
+        conn.execute(
+            "INSERT INTO messages (id, apple_message_id, guid, conversation_id, is_from_me, date_unix, is_reaction)
+             VALUES (1, 1, 'm1', 3, 0, 100, 0)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO messages (id, apple_message_id, guid, conversation_id, is_from_me, date_unix, is_reaction)
+             VALUES (2, 2, 'm2', 1160, 0, 200, 0)",
+            [],
+        )
+        .unwrap();
+
+        merge_duplicate_conversations(&conn).unwrap();
+
+        let remaining_ids: Vec<i64> = conn
+            .prepare("SELECT id FROM conversations ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(remaining_ids, vec![3]);
+
+        let alias_target: i64 = conn
+            .query_row(
+                "SELECT canonical_conversation_id FROM conversation_aliases WHERE source_conversation_id = 1160",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(alias_target, 3);
+
+        let merged_message_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM messages WHERE conversation_id = 3 AND is_reaction = 0",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(merged_message_count, 2);
+
+        let latest_name: String = conn
+            .query_row(
+                "SELECT display_name FROM conversations WHERE id = 3",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(latest_name, "Latest Name");
+    }
 }

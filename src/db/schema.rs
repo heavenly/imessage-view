@@ -31,6 +31,12 @@ CREATE TABLE IF NOT EXISTS conversation_participants (
     PRIMARY KEY (conversation_id, contact_id)
 );";
 
+pub const CREATE_CONVERSATION_ALIASES: &str = "
+CREATE TABLE IF NOT EXISTS conversation_aliases (
+    source_conversation_id INTEGER PRIMARY KEY,
+    canonical_conversation_id INTEGER NOT NULL REFERENCES conversations(id)
+);";
+
 pub const CREATE_MESSAGES: &str = "
 CREATE TABLE IF NOT EXISTS messages (
     id INTEGER PRIMARY KEY,
@@ -93,6 +99,7 @@ pub fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(CREATE_CONTACTS)?;
     conn.execute_batch(CREATE_CONVERSATIONS)?;
     conn.execute_batch(CREATE_CONVERSATION_PARTICIPANTS)?;
+    conn.execute_batch(CREATE_CONVERSATION_ALIASES)?;
     conn.execute_batch(CREATE_MESSAGES)?;
     conn.execute_batch(CREATE_ATTACHMENTS)?;
     conn.execute_batch(CREATE_MESSAGES_FTS)?;
@@ -130,6 +137,7 @@ pub fn drop_all_tables(conn: &Connection) -> rusqlite::Result<()> {
         "DROP TABLE IF EXISTS messages_fts;
          DROP TABLE IF EXISTS attachments;
          DROP TABLE IF EXISTS messages;
+         DROP TABLE IF EXISTS conversation_aliases;
          DROP TABLE IF EXISTS conversation_participants;
          DROP TABLE IF EXISTS conversations;
          DROP TABLE IF EXISTS contacts;",

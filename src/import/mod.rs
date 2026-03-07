@@ -69,6 +69,8 @@ fn run_full_import(source_copy: &PathBuf, port_path: &PathBuf) -> anyhow::Result
         }
     }
 
+    db::queries::merge_duplicate_conversations(&port_db)?;
+
     eprintln!("Full import completed successfully.");
     Ok(())
 }
@@ -108,6 +110,8 @@ fn run_incremental_import(source_copy: &PathBuf, port_path: &PathBuf) -> anyhow:
             return Err(anyhow::anyhow!("attachment import failed"));
         }
     }
+
+    db::queries::merge_duplicate_conversations(&port_db)?;
 
     eprintln!("Incremental import completed successfully.");
     Ok(())

@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
-use axum::response::{Html, IntoResponse};
+use axum::response::{Html, IntoResponse, Redirect};
 use serde::{Deserialize, Serialize};
 
 use crate::db::queries;
@@ -13,6 +13,13 @@ use super::format::{
 use super::partials::{
     ContributionDay, GroupParticipantStatView, GroupReactionHighlightView, HourlyStatView,
 };
+
+fn canonical_conversation_id(conn: &rusqlite::Connection, conversation_id: i64) -> i64 {
+    queries::resolve_canonical_conversation_id(conn, conversation_id)
+        .ok()
+        .flatten()
+        .unwrap_or(conversation_id)
+}
 
 fn relative_time(unix: i64) -> String {
     let now = chrono::Utc::now().timestamp();
@@ -152,9 +159,18 @@ pub async fn conversation(
     Query(params): Query<ConversationQuery>,
 ) -> impl IntoResponse {
     let conn = state.db.lock().unwrap();
-    let info = queries::get_conversation_info(&conn, id);
+    let canonical_id = canonical_conversation_id(&conn, id);
+    if canonical_id != id {
+        let url = params
+            .focus
+            .map(|focus| format!("/conversations/{canonical_id}?focus={focus}"))
+            .unwrap_or_else(|| format!("/conversations/{canonical_id}"));
+        return Redirect::to(&url).into_response();
+    }
+
+    let info = queries::get_conversation_info(&conn, canonical_id);
     let primary_contact_id =
-        queries::get_primary_contact_id_for_conversation(&conn, id).unwrap_or_default();
+        queries::get_primary_contact_id_for_conversation(&conn, canonical_id).unwrap_or_default();
 
     let (contact_name, is_group, participants, has_photo) = match info {
         Ok(info) => {
@@ -166,19 +182,21 @@ pub async fn conversation(
         Err(_) => ("Unknown".to_string(), false, vec![], false),
     };
 
-    let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
-    let contribution_days = super::partials::build_contribution_graph(&conn, id, is_group);
+    let attachment_count =
+        queries::count_conversation_attachments(&conn, canonical_id).unwrap_or(0);
+    let contribution_days =
+        super::partials::build_contribution_graph(&conn, canonical_id, is_group);
     let conversation_started_unix =
-        queries::get_conversation_first_message_unix(&conn, id).unwrap_or_default();
+        queries::get_conversation_first_message_unix(&conn, canonical_id).unwrap_or_default();
 
     let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
-        let avg = queries::get_avg_time_between_messages(&conn, id)
+        let avg = queries::get_avg_time_between_messages(&conn, canonical_id)
             .ok()
             .flatten()
             .map(super::partials::format_duration);
         (None, None, avg)
     } else {
-        let times = queries::get_avg_response_times(&conn, id).ok();
+        let times = queries::get_avg_response_times(&conn, canonical_id).ok();
         let their = times
             .as_ref()
             .and_then(|t| t.avg_their_response)
@@ -191,17 +209,18 @@ pub async fn conversation(
     };
 
     let (group_participant_stats, reaction_highlights, hourly_stats) = if is_group {
-        let stats = super::partials::build_group_participant_stat_views(&conn, id);
-        let reaction_highlights = super::partials::build_group_reaction_highlights(&conn, id);
+        let stats = super::partials::build_group_participant_stat_views(&conn, canonical_id);
+        let reaction_highlights =
+            super::partials::build_group_reaction_highlights(&conn, canonical_id);
         (stats, reaction_highlights, vec![])
     } else {
-        let hourly = super::partials::build_hourly_stat_views(&conn, id);
+        let hourly = super::partials::build_hourly_stat_views(&conn, canonical_id);
         (vec![], vec![], hourly)
     };
 
     let t = ConversationTemplate {
         title: format!("Conversation with {contact_name}"),
-        conversation_id: id,
+        conversation_id: canonical_id,
         contact_initial: display_initial(&contact_name),
         contact_name,
         is_group,
@@ -222,7 +241,7 @@ pub async fn conversation(
         reaction_highlights,
         hourly_stats,
     };
-    Html(t.render().unwrap_or_default())
+    Html(t.render().unwrap_or_default()).into_response()
 }
 
 #[derive(Deserialize)]
@@ -662,7 +681,8 @@ pub async fn conversation_photo(
 ) -> impl IntoResponse {
     let photo = {
         let conn = state.db.lock().unwrap();
-        queries::get_conversation_photo(&conn, id)
+        let canonical_id = canonical_conversation_id(&conn, id);
+        queries::get_conversation_photo(&conn, canonical_id)
     };
 
     match photo {

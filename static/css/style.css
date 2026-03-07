@@ -70,6 +70,62 @@ body {
   position: relative;
 }
 
+.im-conversation-wrapper {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+.im-conversation-sidebar {
+    width: 320px;
+    background: var(--im-bg-secondary);
+    border-left: 1px solid var(--im-border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    overflow-y: auto;
+    
+    /* Animation */
+    margin-right: -320px;
+    visibility: hidden;
+    transition: margin-right 0.3s cubic-bezier(0.4, 0, 0.2, 1), visibility 0.3s;
+}
+
+.im-conversation-sidebar.active {
+    margin-right: 0;
+    visibility: visible;
+}
+
+.im-conversation-sidebar-header {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--im-border);
+    display: flex;
+    align-items: center;
+}
+
+.im-conversation-sidebar-header h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 0;
+    color: var(--im-text-primary);
+}
+
+.im-sidebar-content {
+    padding: 20px;
+    color: var(--im-text-secondary);
+    font-size: 14px;
+}
+
+.sidebar-chevron {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.sidebar-chevron.active {
+    transform: rotate(180deg);
+}
+
+
 .im-chat {
   flex: 1;
   overflow-y: auto;
@@ -226,6 +282,8 @@ body {
 
 /* Chat Container */
 .im-chat-container {
+    flex: 1;
+    overflow: hidden;
     display: flex;
     flex-direction: column;
     background: var(--im-bg-primary);

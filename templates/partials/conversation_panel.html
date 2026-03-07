@@ -1,4 +1,6 @@
-<div class="im-main im-chat-container" id="main-content">
+<div class="im-main" id="main-content">
+<div class="im-conversation-wrapper">
+<div class="im-chat-container">
     <header class="im-chat-header">
         <button class="im-chat-header-info{% if !is_group %} im-chat-header-info--solo{% endif %}" onclick="document.getElementById('contact-info-modal').classList.add('active')">
             <div class="im-avatar{% if is_group %} im-avatar--group{% endif %}">
@@ -25,7 +27,9 @@
             </div>
         </button>
         <div class="im-chat-header-actions">
-            <button class="im-header-btn" title="Info" onclick="document.getElementById('contact-info-modal').classList.add('active')">ℹ️</button>
+            <button class="im-header-btn im-header-btn--toggle-sidebar" title="Toggle Sidebar" onclick="toggleSidebar()">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="sidebar-chevron"><polyline points="15 18 9 12 15 6"></polyline></svg>
+            </button>
         </div>
     </header>
     
@@ -55,6 +59,18 @@
         </div>
     </div>
     <button id="scroll-to-bottom" class="im-scroll-bottom" aria-label="Scroll to bottom">&darr;</button>
+</div>
+
+<!-- Placeholder Sidebar -->
+<aside id="conversation-sidebar" class="im-conversation-sidebar">
+    <div class="im-conversation-sidebar-header">
+        <h3>Details</h3>
+    </div>
+    <div class="im-sidebar-content">
+        <p>More information will be placed here.</p>
+    </div>
+</aside>
+</div>
 </div>
 
 <div id="contact-info-modal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('active')">
@@ -115,6 +131,15 @@
 </div>
 
 <script>
+window.toggleSidebar = function() {
+    var sidebar = document.getElementById('conversation-sidebar');
+    var chevron = document.querySelector('.sidebar-chevron');
+    if (sidebar && chevron) {
+        sidebar.classList.toggle('active');
+        chevron.classList.toggle('active');
+    }
+};
+
 (function() {
     var tabContent = document.getElementById('tab-content');
     var scrollBtn = document.getElementById('scroll-to-bottom');

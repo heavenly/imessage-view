@@ -1,8 +1,8 @@
 pub mod queries;
 pub mod schema;
 
-use std::path::Path;
 use rusqlite::Connection;
+use std::path::Path;
 
 fn set_pragmas(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(
@@ -21,12 +21,42 @@ pub fn create_db(path: &Path) -> anyhow::Result<Connection> {
     Ok(conn)
 }
 
+pub fn open_existing(path: &Path) -> anyhow::Result<Connection> {
+    let conn = Connection::open(path)?;
+    set_pragmas(&conn)?;
+    Ok(conn)
+}
+
 pub fn drop_and_recreate(path: &Path) -> anyhow::Result<Connection> {
     let conn = Connection::open(path)?;
     set_pragmas(&conn)?;
     schema::drop_all_tables(&conn)?;
     schema::create_all_tables(&conn)?;
     Ok(conn)
+}
+
+pub fn has_current_schema(conn: &Connection) -> bool {
+    let sql: Option<String> = conn
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='attachments'",
+            [],
+            |row| row.get(0),
+        )
+        .ok();
+
+    match sql {
+        Some(s) => s.contains("UNIQUE(message_id, apple_attachment_id)"),
+        None => false,
+    }
+}
+
+pub fn get_high_water_mark(conn: &Connection) -> i64 {
+    conn.query_row(
+        "SELECT COALESCE(MAX(apple_message_id), 0) FROM messages",
+        [],
+        |row| row.get(0),
+    )
+    .unwrap_or(0)
 }
 
 #[cfg(test)]
@@ -69,7 +99,10 @@ mod tests {
             )
             .unwrap();
 
-        assert!(sql.contains("trigram"), "FTS5 should use trigram tokenizer, got: {sql}");
+        assert!(
+            sql.contains("trigram"),
+            "FTS5 should use trigram tokenizer, got: {sql}"
+        );
     }
 
     #[test]

@@ -23,7 +23,10 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Import iMessage data into the local database
-    Import,
+    Import {
+        #[arg(long, help = "Force a full reimport (drop and recreate all tables)")]
+        full: bool,
+    },
     /// Start the web server
     Serve,
     /// Scan iOS backup for missing attachments
@@ -149,8 +152,8 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Import => {
-            if let Err(err) = import::run_import() {
+        Commands::Import { full } => {
+            if let Err(err) = import::run_import(full) {
                 eprintln!("import failed: {err}");
                 std::process::exit(1);
             }

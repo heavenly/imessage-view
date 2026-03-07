@@ -28,7 +28,11 @@
     <header class="im-chat-header">
         <div class="im-chat-header-info">
             <div class="im-avatar{% if is_group %} im-avatar--group{% endif %}">
+                {% if has_photo %}
+                <img src="/conversations/{{ conversation_id }}/photo" alt="">
+                {% else %}
                 {% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}
+                {% endif %}
             </div>
             <div class="im-chat-header-text">
                 <h2 class="im-chat-header-name">{{ contact_name }}</h2>

@@ -6,7 +6,11 @@
 {% for c in conversations %}
 <a href="/conversations/{{ c.id }}" class="im-conversation-item">
     <div class="im-avatar{% if c.is_group %} im-avatar--group{% endif %}">
+        {% if c.has_photo %}
+        <img src="/conversations/{{ c.id }}/photo" alt="" loading="lazy">
+        {% else %}
         {% if c.is_group %}👥{% else %}{{ c.name.chars().next().unwrap_or('?') }}{% endif %}
+        {% endif %}
     </div>
     <div class="im-conversation-content">
         <div class="im-conversation-top">

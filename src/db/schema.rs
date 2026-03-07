@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS contacts (
     handle TEXT NOT NULL UNIQUE,
     display_name TEXT,
     service TEXT,
-    person_centric_id TEXT
+    person_centric_id TEXT,
+    photo BLOB
 );";
 
 pub const CREATE_CONVERSATIONS: &str = "
@@ -19,7 +20,8 @@ CREATE TABLE IF NOT EXISTS conversations (
     service TEXT,
     last_message_date INTEGER,
     message_count INTEGER DEFAULT 0,
-    participant_count INTEGER DEFAULT 0
+    participant_count INTEGER DEFAULT 0,
+    group_photo_path TEXT
 );";
 
 pub const CREATE_CONVERSATION_PARTICIPANTS: &str = "
@@ -65,7 +67,8 @@ CREATE TABLE IF NOT EXISTS attachments (
     ck_record_id TEXT,
     is_sticker BOOLEAN DEFAULT FALSE,
     hide_attachment BOOLEAN DEFAULT FALSE,
-    backup_source_path TEXT
+    backup_source_path TEXT,
+    UNIQUE(message_id, apple_attachment_id)
 );";
 
 pub const CREATE_MESSAGES_FTS: &str = "

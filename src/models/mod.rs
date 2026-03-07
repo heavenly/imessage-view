@@ -7,6 +7,8 @@ pub struct Contact {
     pub display_name: Option<String>,
     pub service: Option<String>,
     pub person_centric_id: Option<String>,
+    #[serde(skip)]
+    pub photo: Option<Vec<u8>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -20,6 +22,7 @@ pub struct Conversation {
     pub last_message_date: Option<i64>,
     pub message_count: i64,
     pub participant_count: i64,
+    pub group_photo_path: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

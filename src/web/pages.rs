@@ -36,6 +36,7 @@ pub struct ConversationRow {
     pub relative_date: String,
     pub message_count: i64,
     pub is_group: bool,
+    pub has_photo: bool,
 }
 
 #[derive(Deserialize)]
@@ -83,6 +84,7 @@ pub fn build_conversation_rows(state: &AppState, filter: Option<&str>) -> Vec<Co
                 relative_date,
                 message_count: c.message_count,
                 is_group: c.is_group,
+                has_photo: c.has_photo,
             }
         })
         .collect()
@@ -125,6 +127,7 @@ struct ConversationTemplate {
     is_group: bool,
     participants: Vec<String>,
     attachment_count: i64,
+    has_photo: bool,
 }
 
 pub async fn conversation(
@@ -134,7 +137,7 @@ pub async fn conversation(
     let conn = state.db.lock().unwrap();
     let info = queries::get_conversation_info(&conn, id);
 
-    let (contact_name, is_group, participants) = match info {
+    let (contact_name, is_group, participants, has_photo) = match info {
         Ok(info) => {
             let name = info
                 .display_name
@@ -146,9 +149,9 @@ pub async fn conversation(
                         info.participant_names.join(", ")
                     }
                 });
-            (name, info.is_group, info.participant_names)
+            (name, info.is_group, info.participant_names, info.has_photo)
         }
-        Err(_) => ("Unknown".to_string(), false, vec![]),
+        Err(_) => ("Unknown".to_string(), false, vec![], false),
     };
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
@@ -160,6 +163,7 @@ pub async fn conversation(
         is_group,
         participants,
         attachment_count,
+        has_photo,
     };
     Html(t.render().unwrap_or_default())
 }
@@ -438,4 +442,51 @@ pub async fn analytics(State(state): State<AppState>) -> impl IntoResponse {
         att_total_size: format_bytes(att.total_bytes),
     };
     Html(t.render().unwrap_or_default())
+}
+
+pub async fn conversation_photo(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> impl IntoResponse {
+    let photo = {
+        let conn = state.db.lock().unwrap();
+        queries::get_conversation_photo(&conn, id)
+    };
+
+    match photo {
+        Ok(Some(queries::ConversationPhoto::ContactBlob(bytes))) => {
+            let content_type = if bytes.starts_with(b"\x89PNG") {
+                "image/png"
+            } else {
+                "image/jpeg"
+            };
+            (
+                axum::http::StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, content_type),
+                 (axum::http::header::CACHE_CONTROL, "public, max-age=86400")],
+                bytes,
+            )
+                .into_response()
+        }
+        Ok(Some(queries::ConversationPhoto::GroupFilePath(path))) => {
+            match tokio::fs::read(&path).await {
+                Ok(bytes) => {
+                    let content_type = if path.ends_with(".png") {
+                        "image/png"
+                    } else {
+                        "image/jpeg"
+                    };
+                    (
+                        axum::http::StatusCode::OK,
+                        [(axum::http::header::CONTENT_TYPE, content_type),
+                         (axum::http::header::CACHE_CONTROL, "public, max-age=86400")],
+                        bytes,
+                    )
+                        .into_response()
+                }
+                Err(_) => axum::http::StatusCode::NOT_FOUND.into_response(),
+            }
+        }
+        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+    }
 }

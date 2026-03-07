@@ -13,6 +13,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(pages::index))
         .route("/conversations/{id}", get(pages::conversation))
+        .route("/conversations/{id}/photo", get(pages::conversation_photo))
         .route("/search", get(pages::search))
         .route("/attachments", get(pages::attachments_page))
         .route("/attachments/download/{id}", get(attachments::download))

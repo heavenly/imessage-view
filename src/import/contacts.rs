@@ -4,8 +4,13 @@ use std::path::PathBuf;
 use rusqlite::{Connection, OpenFlags};
 use tracing::warn;
 
-pub fn resolve_contacts() -> HashMap<String, String> {
-    let mut contacts: HashMap<String, String> = HashMap::new();
+pub struct ContactInfo {
+    pub display_name: String,
+    pub photo: Option<Vec<u8>>,
+}
+
+pub fn resolve_contacts() -> HashMap<String, ContactInfo> {
+    let mut contacts: HashMap<String, ContactInfo> = HashMap::new();
 
     let db_paths = match find_addressbook_dbs() {
         Ok(paths) => paths,
@@ -58,24 +63,32 @@ fn find_addressbook_dbs() -> Result<Vec<PathBuf>, std::io::Error> {
 
 fn load_contacts_from_db(
     db_path: &PathBuf,
-    contacts: &mut HashMap<String, String>,
+    contacts: &mut HashMap<String, ContactInfo>,
 ) -> anyhow::Result<()> {
     let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
 
     let mut name_map: HashMap<i64, String> = HashMap::new();
+    let mut photo_map: HashMap<i64, Vec<u8>> = HashMap::new();
     {
-        let mut stmt = conn.prepare("SELECT Z_PK, ZFIRSTNAME, ZLASTNAME FROM ZABCDRECORD")?;
+        let mut stmt = conn
+            .prepare("SELECT Z_PK, ZFIRSTNAME, ZLASTNAME, ZTHUMBNAILIMAGEDATA FROM ZABCDRECORD")?;
         let rows = stmt.query_map([], |row| {
             let pk: i64 = row.get(0)?;
             let first: Option<String> = row.get(1)?;
             let last: Option<String> = row.get(2)?;
-            Ok((pk, first, last))
+            let photo: Option<Vec<u8>> = row.get(3)?;
+            Ok((pk, first, last, photo))
         })?;
         for row in rows.flatten() {
-            let (pk, first, last) = row;
+            let (pk, first, last, photo) = row;
             let display = format_name(first.as_deref(), last.as_deref());
             if !display.is_empty() {
                 name_map.insert(pk, display);
+            }
+            if let Some(bytes) = photo {
+                if let Some(image_data) = extract_image_data(bytes) {
+                    photo_map.insert(pk, image_data);
+                }
             }
         }
     }
@@ -93,7 +106,13 @@ fn load_contacts_from_db(
                 if let Some(name) = name_map.get(&owner_id) {
                     let normalized = normalize_email(&email);
                     if !normalized.is_empty() {
-                        contacts.insert(normalized, name.clone());
+                        contacts.insert(
+                            normalized,
+                            ContactInfo {
+                                display_name: name.clone(),
+                                photo: photo_map.get(&owner_id).cloned(),
+                            },
+                        );
                     }
                 }
             }
@@ -113,7 +132,13 @@ fn load_contacts_from_db(
                 if let Some(name) = name_map.get(&owner_id) {
                     let normalized = normalize_phone(&phone);
                     if !normalized.is_empty() {
-                        contacts.insert(normalized, name.clone());
+                        contacts.insert(
+                            normalized,
+                            ContactInfo {
+                                display_name: name.clone(),
+                                photo: photo_map.get(&owner_id).cloned(),
+                            },
+                        );
                     }
                 }
             }
@@ -121,6 +146,17 @@ fn load_contacts_from_db(
     }
 
     Ok(())
+}
+
+fn extract_image_data(raw: Vec<u8>) -> Option<Vec<u8>> {
+    if raw.is_empty() {
+        return None;
+    }
+    match raw[0] {
+        0x01 if raw.len() > 1 => Some(raw[1..].to_vec()),
+        0x02 => None,
+        _ => Some(raw),
+    }
 }
 
 fn format_name(first: Option<&str>, last: Option<&str>) -> String {
@@ -197,6 +233,9 @@ mod tests {
     #[test]
     fn test_resolve_contacts_no_panic() {
         let map = resolve_contacts();
-        let _ = map;
+        for (_handle, info) in &map {
+            let _ = &info.display_name;
+            let _ = &info.photo;
+        }
     }
 }

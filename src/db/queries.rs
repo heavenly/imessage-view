@@ -180,6 +180,7 @@ pub struct ConversationInfo {
     pub display_name: Option<String>,
     pub is_group: bool,
     pub participant_names: Vec<String>,
+    pub has_photo: bool,
 }
 
 pub fn get_conversation_info(
@@ -187,13 +188,14 @@ pub fn get_conversation_info(
     conversation_id: i64,
 ) -> anyhow::Result<ConversationInfo> {
     let row = conn.query_row(
-        "SELECT id, display_name, is_group FROM conversations WHERE id = ?1",
+        "SELECT id, display_name, is_group, group_photo_path FROM conversations WHERE id = ?1",
         [conversation_id],
         |row| {
             Ok((
                 row.get::<_, i64>(0)?,
                 row.get::<_, Option<String>>(1)?,
                 row.get::<_, bool>(2)?,
+                row.get::<_, Option<String>>(3)?,
             ))
         },
     )?;
@@ -209,11 +211,30 @@ pub fn get_conversation_info(
         .query_map([conversation_id], |r| r.get(0))?
         .collect::<Result<Vec<_>, _>>()?;
 
+    let has_photo = if row.2 {
+        row.3.is_some()
+    } else {
+        let photo_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(
+                    SELECT 1 FROM conversation_participants cp
+                    JOIN contacts ct ON ct.id = cp.contact_id
+                    WHERE cp.conversation_id = ?1 AND ct.photo IS NOT NULL
+                    LIMIT 1
+                )",
+                [conversation_id],
+                |r| r.get(0),
+            )
+            .unwrap_or(false);
+        photo_exists
+    };
+
     Ok(ConversationInfo {
         id: row.0,
         display_name: row.1,
         is_group: row.2,
         participant_names: names,
+        has_photo,
     })
 }
 
@@ -314,6 +335,7 @@ pub struct ConversationListRow {
     pub last_message_date: Option<i64>,
     pub message_count: i64,
     pub last_message_preview: Option<String>,
+    pub has_photo: bool,
 }
 
 pub fn conversation_list(
@@ -334,7 +356,17 @@ pub fn conversation_list(
                      FROM messages m
                      WHERE m.conversation_id = c.id
                      ORDER BY m.date_unix DESC
-                     LIMIT 1) AS last_preview
+                     LIMIT 1) AS last_preview,
+                    CASE WHEN c.is_group THEN
+                        (c.group_photo_path IS NOT NULL)
+                    ELSE
+                        EXISTS(
+                            SELECT 1 FROM conversation_participants cp2
+                            JOIN contacts ct2 ON ct2.id = cp2.contact_id
+                            WHERE cp2.conversation_id = c.id AND ct2.photo IS NOT NULL
+                            LIMIT 1
+                        )
+                    END AS has_photo
              FROM conversations c";
 
     let row_mapper = |row: &rusqlite::Row| {
@@ -346,6 +378,7 @@ pub fn conversation_list(
             last_message_date: row.get(4)?,
             message_count: row.get(5)?,
             last_message_preview: row.get(6)?,
+            has_photo: row.get(7)?,
         })
     };
 
@@ -725,4 +758,40 @@ pub fn update_attachment_backup_source(
         rusqlite::params![backup_path, id],
     )?;
     Ok(())
+}
+
+pub enum ConversationPhoto {
+    ContactBlob(Vec<u8>),
+    GroupFilePath(String),
+}
+
+pub fn get_conversation_photo(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Option<ConversationPhoto>> {
+    let row = conn.query_row(
+        "SELECT is_group, group_photo_path FROM conversations WHERE id = ?1",
+        [conversation_id],
+        |row| Ok((row.get::<_, bool>(0)?, row.get::<_, Option<String>>(1)?)),
+    )?;
+
+    let (is_group, group_photo_path) = row;
+
+    if is_group {
+        Ok(group_photo_path.map(ConversationPhoto::GroupFilePath))
+    } else {
+        let photo: Option<Vec<u8>> = conn
+            .query_row(
+                "SELECT ct.photo FROM conversation_participants cp
+                 JOIN contacts ct ON ct.id = cp.contact_id
+                 WHERE cp.conversation_id = ?1 AND ct.photo IS NOT NULL
+                 LIMIT 1",
+                [conversation_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .flatten();
+
+        Ok(photo.map(ConversationPhoto::ContactBlob))
+    }
 }

@@ -46,6 +46,53 @@ pub async fn download(
     ))
 }
 
+pub async fn preview(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let attachment = {
+        let conn = state.db.lock().unwrap();
+        queries::get_attachment(&conn, id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+    };
+
+    let attachment = attachment.ok_or(StatusCode::NOT_FOUND)?;
+    let file_path = attachment.existing_path().ok_or(StatusCode::NOT_FOUND)?;
+    let path = StdPath::new(file_path);
+    let content_type = attachment
+        .mime_type
+        .as_deref()
+        .unwrap_or("application/octet-stream");
+
+    if content_type.starts_with("image/") {
+        if should_transcode_image_preview(&attachment) {
+            let data = generate_image_preview(path, 1800)
+                .await
+                .ok_or(StatusCode::NOT_FOUND)?;
+            return Ok((
+                [
+                    (header::CONTENT_TYPE, "image/jpeg".to_string()),
+                    (header::CONTENT_DISPOSITION, "inline".to_string()),
+                    (header::CACHE_CONTROL, "public, max-age=3600".to_string()),
+                ],
+                Body::from(data),
+            ));
+        }
+    }
+
+    let file = File::open(path).await.map_err(|_| StatusCode::NOT_FOUND)?;
+    let stream = ReaderStream::new(file);
+    let body = Body::from_stream(stream);
+
+    Ok((
+        [
+            (header::CONTENT_TYPE, content_type.to_string()),
+            (header::CONTENT_DISPOSITION, "inline".to_string()),
+            (header::CACHE_CONTROL, "public, max-age=3600".to_string()),
+        ],
+        body,
+    ))
+}
+
 /// Generate a thumbnail for an attachment
 /// For images: resize to max 300x300
 /// For videos: try to extract first frame using ffmpeg, fallback to placeholder
@@ -91,7 +138,10 @@ pub async fn thumbnail(
 }
 
 async fn generate_image_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
-    // Try to open and resize the image
+    generate_image_preview(path, 300).await
+}
+
+async fn generate_image_preview(path: &StdPath, max_dimension: u32) -> Option<Vec<u8>> {
     let decoded = tokio::task::spawn_blocking({
         let path = path.to_path_buf();
         move || image::ImageReader::open(&path).ok()?.decode().ok()
@@ -101,11 +151,10 @@ async fn generate_image_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
     .flatten();
 
     let Some(img) = decoded else {
-        return generate_image_thumbnail_with_sips(path).await;
+        return generate_image_preview_with_sips(path, max_dimension).await;
     };
 
-    // Resize to max 300x300 maintaining aspect ratio
-    let thumbnail = img.thumbnail(300, 300);
+    let thumbnail = img.thumbnail(max_dimension, max_dimension);
 
     // Convert to JPEG
     let mut buffer = Vec::new();
@@ -117,9 +166,10 @@ async fn generate_image_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
     Some(buffer)
 }
 
-async fn generate_image_thumbnail_with_sips(path: &StdPath) -> Option<Vec<u8>> {
+async fn generate_image_preview_with_sips(path: &StdPath, max_dimension: u32) -> Option<Vec<u8>> {
     let temp_file = tempfile::NamedTempFile::with_suffix(".jpg").ok()?;
     let temp_path = temp_file.path().to_path_buf();
+    let max_dimension = max_dimension.to_string();
 
     let output = Command::new("sips")
         .args([
@@ -127,7 +177,7 @@ async fn generate_image_thumbnail_with_sips(path: &StdPath) -> Option<Vec<u8>> {
             "format",
             "jpeg",
             "-Z",
-            "300",
+            max_dimension.as_str(),
             path.to_str()?,
             "--out",
             temp_path.to_str()?,
@@ -141,6 +191,22 @@ async fn generate_image_thumbnail_with_sips(path: &StdPath) -> Option<Vec<u8>> {
     }
 
     tokio::fs::read(&temp_path).await.ok()
+}
+
+fn should_transcode_image_preview(attachment: &queries::AttachmentRow) -> bool {
+    attachment
+        .mime_type
+        .as_deref()
+        .map(|mime| {
+            mime.eq_ignore_ascii_case("image/heic") || mime.eq_ignore_ascii_case("image/heif")
+        })
+        .unwrap_or(false)
+        || attachment
+            .display_name()
+            .rsplit('.')
+            .next()
+            .map(|ext| matches!(ext.to_ascii_lowercase().as_str(), "heic" | "heif"))
+            .unwrap_or(false)
 }
 
 async fn generate_video_thumbnail(path: &StdPath) -> Option<Vec<u8>> {

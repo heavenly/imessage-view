@@ -802,6 +802,7 @@ struct MessageView {
     file_attachments: Vec<AttachmentView>,
     reactions: Vec<ReactionView>,
     is_sticker_only: bool,
+    is_media_only: bool,
     sender_id: Option<i64>,
     has_sender_photo: bool,
 }
@@ -1079,6 +1080,9 @@ pub async fn messages_partial(
             let is_sticker_only = m.body.as_deref().unwrap_or_default().trim().is_empty()
                 && !attachments.is_empty()
                 && attachments.iter().all(|att| att.is_sticker);
+            let is_media_only = m.body.as_deref().unwrap_or_default().trim().is_empty()
+                && !media_attachments.is_empty()
+                && file_attachments.is_empty();
             let reactions = build_reactions(reaction_map.remove(&m.guid).unwrap_or_default());
             let sender_name = m.sender_name.map(|name| format_contact_value(&name));
             MessageView {
@@ -1095,6 +1099,7 @@ pub async fn messages_partial(
                 file_attachments,
                 reactions,
                 is_sticker_only,
+                is_media_only,
                 sender_id: m.sender_id,
                 has_sender_photo: m.has_sender_photo,
             }

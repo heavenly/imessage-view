@@ -56,12 +56,12 @@
         </div>
         <div class="attachment-preview">
             {% if a.mime_category == "image" %}
-            <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'image', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="image" data-url="/attachments/download/{{ a.id }}">
+            <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'image', '/attachments/preview/{{ a.id }}', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="image" data-url="/attachments/preview/{{ a.id }}">
                 <img src="/attachments/thumbnail/{{ a.id }}" alt="{{ a.display_name }}" class="attachment-thumbnail" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                 <span class="fallback-placeholder" style="display:none">📷</span>
             </a>
             {% else if a.mime_category == "video" %}
-            <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'video', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="video" data-url="/attachments/download/{{ a.id }}">
+            <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'video', '/attachments/preview/{{ a.id }}', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="video" data-url="/attachments/preview/{{ a.id }}">
                 <img src="/attachments/thumbnail/{{ a.id }}" alt="{{ a.display_name }}" class="attachment-thumbnail" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
                 <span class="fallback-placeholder" style="display:none">🎬</span>
             </a>
@@ -74,11 +74,11 @@
         <div class="attachment-info">
             <div class="attachment-name" title="{{ a.display_name }}">
                 {% if a.is_image %}
-                <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'image', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="image" data-url="/attachments/download/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
+                <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'image', '/attachments/preview/{{ a.id }}', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="image" data-url="/attachments/preview/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
                     {{ a.display_name }}
                 </a>
                 {% else if a.mime_category == "video" %}
-                <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'video', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="video" data-url="/attachments/download/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
+                <a href="javascript:void(0)" onclick="openPreview('{{ a.id }}', 'video', '/attachments/preview/{{ a.id }}', '/attachments/download/{{ a.id }}')" data-id="{{ a.id }}" data-type="video" data-url="/attachments/preview/{{ a.id }}" {% if !a.file_exists %}class="missing-file"{% endif %}>
                     {{ a.display_name }}
                 </a>
                 {% else %}
@@ -137,25 +137,25 @@
 
 <script>
 if (typeof window.openPreview === 'undefined') {
-    window.openPreview = function(id, type, url) {
+    window.openPreview = function(id, type, previewUrl, downloadUrl) {
         const modal = document.getElementById('media-preview-modal');
         const body = document.getElementById('modal-body');
         const downloadBtn = document.getElementById('modal-download-btn');
         
         body.innerHTML = '';
-        downloadBtn.href = url;
+        downloadBtn.href = downloadUrl || previewUrl;
         downloadBtn.setAttribute('download', '');
         
         if (type === 'image') {
             const img = document.createElement('img');
-            img.src = url;
+            img.src = previewUrl;
             img.style.maxWidth = '100%';
             img.style.maxHeight = '70vh';
             img.style.objectFit = 'contain';
             body.appendChild(img);
         } else if (type === 'video') {
             const video = document.createElement('video');
-            video.src = url;
+            video.src = previewUrl;
             video.controls = true;
             video.autoplay = true;
             video.style.maxWidth = '100%';

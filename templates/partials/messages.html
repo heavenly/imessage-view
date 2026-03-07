@@ -60,8 +60,8 @@
                     {% endif %}
                 {% endif %}
                 {% for msg in group.messages %}
-                <div class="im-message{% if let Some(fid) = focus_id %}{% if *fid == msg.id %} im-message--focused{% endif %}{% endif %}" id="msg-{{ msg.id }}">
-                    <div class="im-message-bubble{% if msg.is_sticker_only %} im-message-bubble--sticker{% endif %}">
+                <div class="im-message{% if let Some(fid) = focus_id %}{% if *fid == msg.id %} im-message--focused{% endif %}{% endif %}{% if msg.is_media_only %} im-message--media-only{% endif %}" id="msg-{{ msg.id }}">
+                    <div class="im-message-bubble{% if msg.is_sticker_only %} im-message-bubble--sticker{% endif %}{% if msg.is_media_only %} im-message-bubble--media-only{% endif %}">
                         {% if let Some(body_html) = msg.body_html %}
                         <p class="im-message-text">{{ body_html|safe }}</p>
                         {% endif %}

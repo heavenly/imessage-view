@@ -544,9 +544,25 @@ body {
     box-shadow: none;
 }
 
+.im-message-bubble--media-only {
+    background: transparent !important;
+    padding: 0;
+    box-shadow: none;
+}
+
 .im-message-bubble--sticker::before,
-.im-message-bubble--sticker::after {
+.im-message-bubble--sticker::after,
+.im-message-bubble--media-only::before,
+.im-message-bubble--media-only::after {
     display: none;
+}
+
+.im-message--media-only {
+    max-width: none;
+}
+
+.im-message--media-only .im-message-time {
+    padding: 0;
 }
 
 /* Sent Messages (Blue) */
@@ -896,6 +912,10 @@ body {
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 8px;
     margin-top: 12px;
+}
+
+.im-message-gallery--expanded .im-message-gallery-stack {
+    display: none;
 }
 
 .im-message-gallery--expanded .im-message-gallery-grid {

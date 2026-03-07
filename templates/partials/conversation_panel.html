@@ -119,7 +119,7 @@
 
 <script>
 if (typeof window.openPreview === 'undefined') {
-    window.openPreview = function(id, type, url) {
+    window.openPreview = function(id, type, previewUrl, downloadUrl) {
         const modal = document.getElementById('media-preview-modal');
         const body = document.getElementById('modal-body');
         const downloadBtn = document.getElementById('modal-download-btn');
@@ -129,19 +129,19 @@ if (typeof window.openPreview === 'undefined') {
         }
 
         body.innerHTML = '';
-        downloadBtn.href = url;
+        downloadBtn.href = downloadUrl || previewUrl;
         downloadBtn.setAttribute('download', '');
 
         if (type === 'image') {
             const img = document.createElement('img');
-            img.src = url;
+            img.src = previewUrl;
             img.style.maxWidth = '100%';
             img.style.maxHeight = '70vh';
             img.style.objectFit = 'contain';
             body.appendChild(img);
         } else if (type === 'video') {
             const video = document.createElement('video');
-            video.src = url;
+            video.src = previewUrl;
             video.controls = true;
             video.autoplay = true;
             video.style.maxWidth = '100%';
@@ -320,6 +320,19 @@ window.toggleSidebar = function() {
                     var currentIndex = Number(tileGallery.dataset.activeIndex || '0');
                     var direction = tileIndex < currentIndex ? 'prev' : tileIndex > currentIndex ? 'next' : null;
                     syncGallery(tileGallery, tileIndex, direction);
+
+                    if (tileGallery.classList.contains('im-message-gallery--expanded')) {
+                        var tileAttachmentId = tile.dataset.id;
+                        if (tileAttachmentId) {
+                            window.openPreview(
+                                tileAttachmentId,
+                                'image',
+                                '/attachments/preview/' + tileAttachmentId,
+                                '/attachments/download/' + tileAttachmentId
+                            );
+                            event.preventDefault();
+                        }
+                    }
                 }
                 return;
             }
@@ -346,7 +359,12 @@ window.toggleSidebar = function() {
             if (open) {
                 var attachmentId = open.dataset.galleryId;
                 if (attachmentId) {
-                    window.openPreview(attachmentId, 'image', '/attachments/download/' + attachmentId);
+                    window.openPreview(
+                        attachmentId,
+                        'image',
+                        '/attachments/preview/' + attachmentId,
+                        '/attachments/download/' + attachmentId
+                    );
                     event.preventDefault();
                 }
             }

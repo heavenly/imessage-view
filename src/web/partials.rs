@@ -30,6 +30,13 @@ pub fn build_contribution_graph(
     let day_map: HashMap<String, &queries::MutualInteractionDay> =
         rows.iter().map(|d| (d.date.clone(), d)).collect();
 
+    let max_total = day_map
+        .values()
+        .filter(|d| d.sent > 0 && d.received > 0)
+        .map(|d| d.sent + d.received)
+        .max()
+        .unwrap_or(1) as f64;
+
     let today = chrono::Utc::now().date_naive();
     let mut result = Vec::with_capacity(90);
     for i in (0..90).rev() {
@@ -37,12 +44,12 @@ pub fn build_contribution_graph(
         let date_str = date.format("%Y-%m-%d").to_string();
         let level = match day_map.get(&date_str) {
             Some(d) if d.sent > 0 && d.received > 0 => {
-                let total = d.sent + d.received;
-                if total >= 20 {
+                let ratio = (d.sent + d.received) as f64 / max_total;
+                if ratio > 0.75 {
                     4
-                } else if total >= 10 {
+                } else if ratio > 0.50 {
                     3
-                } else if total >= 4 {
+                } else if ratio > 0.25 {
                     2
                 } else {
                     1

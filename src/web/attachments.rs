@@ -4,6 +4,7 @@ use axum::http::{header, StatusCode};
 use axum::response::IntoResponse;
 use std::path::Path as StdPath;
 use tokio::fs::File;
+use tokio::process::Command;
 use tokio_util::io::ReaderStream;
 
 use crate::db::queries;
@@ -20,26 +21,9 @@ pub async fn download(
 
     let attachment = attachment.ok_or(StatusCode::NOT_FOUND)?;
 
-    let file_path = if attachment.file_exists {
-        attachment
-            .resolved_path
-            .as_deref()
-            .ok_or(StatusCode::NOT_FOUND)?
-    } else if let Some(backup_path) = &attachment.backup_source_path {
-        if StdPath::new(backup_path).exists() {
-            backup_path.as_str()
-        } else {
-            return Err(StatusCode::NOT_FOUND);
-        }
-    } else {
-        return Err(StatusCode::NOT_FOUND);
-    };
+    let file_path = attachment.existing_path().ok_or(StatusCode::NOT_FOUND)?;
 
     let path = StdPath::new(file_path);
-
-    if !path.exists() {
-        return Err(StatusCode::NOT_FOUND);
-    }
 
     let file = File::open(path).await.map_err(|_| StatusCode::NOT_FOUND)?;
     let stream = ReaderStream::new(file);
@@ -83,26 +67,9 @@ pub async fn thumbnail(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    let file_path = if attachment.file_exists {
-        attachment
-            .resolved_path
-            .as_deref()
-            .ok_or(StatusCode::NOT_FOUND)?
-    } else if let Some(backup_path) = &attachment.backup_source_path {
-        if StdPath::new(backup_path).exists() {
-            backup_path.as_str()
-        } else {
-            return Err(StatusCode::NOT_FOUND);
-        }
-    } else {
-        return Err(StatusCode::NOT_FOUND);
-    };
+    let file_path = attachment.existing_path().ok_or(StatusCode::NOT_FOUND)?;
 
     let path = StdPath::new(file_path);
-
-    if !path.exists() {
-        return Err(StatusCode::NOT_FOUND);
-    }
 
     // Generate thumbnail based on type
     let thumbnail_data = if mime_category == "image" {
@@ -125,13 +92,17 @@ pub async fn thumbnail(
 
 async fn generate_image_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
     // Try to open and resize the image
-    let img = tokio::task::spawn_blocking({
+    let decoded = tokio::task::spawn_blocking({
         let path = path.to_path_buf();
         move || image::ImageReader::open(&path).ok()?.decode().ok()
     })
     .await
     .ok()
-    .flatten()?;
+    .flatten();
+
+    let Some(img) = decoded else {
+        return generate_image_thumbnail_with_sips(path).await;
+    };
 
     // Resize to max 300x300 maintaining aspect ratio
     let thumbnail = img.thumbnail(300, 300);
@@ -146,13 +117,36 @@ async fn generate_image_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
     Some(buffer)
 }
 
+async fn generate_image_thumbnail_with_sips(path: &StdPath) -> Option<Vec<u8>> {
+    let temp_file = tempfile::NamedTempFile::with_suffix(".jpg").ok()?;
+    let temp_path = temp_file.path().to_path_buf();
+
+    let output = Command::new("sips")
+        .args([
+            "-s",
+            "format",
+            "jpeg",
+            "-Z",
+            "300",
+            path.to_str()?,
+            "--out",
+            temp_path.to_str()?,
+        ])
+        .output()
+        .await
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    tokio::fs::read(&temp_path).await.ok()
+}
+
 async fn generate_video_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
     // Try to extract first frame using ffmpeg
     // First check if ffmpeg is available
-    let ffmpeg_check = tokio::process::Command::new("ffmpeg")
-        .arg("-version")
-        .output()
-        .await;
+    let ffmpeg_check = Command::new("ffmpeg").arg("-version").output().await;
 
     if ffmpeg_check.is_err() {
         return None;
@@ -163,7 +157,7 @@ async fn generate_video_thumbnail(path: &StdPath) -> Option<Vec<u8>> {
     let temp_path = temp_file.path().to_path_buf();
 
     // Extract frame at 00:00:00.500 (500ms in)
-    let result = tokio::process::Command::new("ffmpeg")
+    let result = Command::new("ffmpeg")
         .args(&[
             "-i",
             path.to_str()?,

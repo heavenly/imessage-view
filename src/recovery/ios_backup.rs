@@ -3,8 +3,19 @@ use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
 
+fn messages_relative_path(original_path: &str) -> Option<&str> {
+    original_path
+        .strip_prefix("~/Library/Messages/")
+        .or_else(|| {
+            original_path
+                .find("/Library/Messages/")
+                .map(|idx| &original_path[idx + "/Library/Messages/".len()..])
+        })
+        .or_else(|| original_path.strip_prefix("Library/Messages/"))
+}
+
 pub fn resolve_ios_backup_path(backup_root: &Path, original_path: &str) -> Option<PathBuf> {
-    let relative = original_path.strip_prefix("~/Library/Messages/")?;
+    let relative = messages_relative_path(original_path)?;
     let hash_input = format!("MediaDomain-{relative}");
     let hash = format!("{:x}", Sha1::digest(hash_input.as_bytes()));
     let subdir = hash.get(0..2)?;
@@ -45,5 +56,17 @@ mod tests {
         if let Some(path) = result {
             assert!(path.to_string_lossy().contains("/tmp/backup/"));
         }
+    }
+
+    #[test]
+    fn test_resolve_ios_backup_path_with_absolute_home_path() {
+        let backup_root = Path::new("/tmp/backup");
+        let original = "/Users/test/Library/Messages/Attachments/3d/03/at_0_xxx/image.jpg";
+
+        let result = resolve_ios_backup_path(backup_root, original);
+        assert!(
+            result.is_some(),
+            "expected backup path for absolute home path"
+        );
     }
 }

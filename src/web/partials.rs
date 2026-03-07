@@ -1450,7 +1450,7 @@ pub async fn conversation_attachments_partial(
             mime_type: a.mime_type.clone(),
             mime_category: a.mime_category().to_string(),
             size: a.human_size(),
-            file_exists: a.file_exists,
+            file_exists: a.is_available(),
             date: a.date_formatted(),
             is_image: a
                 .mime_type

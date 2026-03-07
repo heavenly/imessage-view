@@ -3,6 +3,7 @@ use rusqlite::Connection;
 use rusqlite::OptionalExtension;
 use serde::Serialize;
 use std::collections::HashMap;
+use std::path::Path;
 
 #[derive(Debug, Serialize)]
 pub struct MessageRow {
@@ -924,6 +925,21 @@ impl AttachmentRow {
             None => String::new(),
         }
     }
+
+    pub fn existing_path(&self) -> Option<&str> {
+        self.resolved_path
+            .as_deref()
+            .filter(|path| Path::new(path).exists())
+            .or_else(|| {
+                self.backup_source_path
+                    .as_deref()
+                    .filter(|path| Path::new(path).exists())
+            })
+    }
+
+    pub fn is_available(&self) -> bool {
+        self.existing_path().is_some()
+    }
 }
 
 pub fn list_attachments(
@@ -967,7 +983,7 @@ pub fn list_attachments(
          JOIN messages m ON m.id = a.message_id
          JOIN conversations c ON c.id = m.conversation_id
          {where_clause}
-         ORDER BY m.date_unix ASC
+         ORDER BY m.date_unix DESC, m.id DESC, a.id DESC
          LIMIT {limit} OFFSET {offset}"
     );
 
@@ -1079,7 +1095,7 @@ pub fn conversation_attachments(
          WHERE m.conversation_id = ?1
            AND (a.filename IS NULL OR a.filename NOT LIKE '%.pluginPayloadAttachment')
            AND (a.transfer_name IS NULL OR a.transfer_name NOT LIKE '%.pluginPayloadAttachment')
-         ORDER BY m.date_unix ASC
+         ORDER BY m.date_unix DESC, m.id DESC, a.id DESC
          LIMIT {limit} OFFSET {offset}"
     );
 
@@ -1204,6 +1220,62 @@ pub fn get_missing_attachments(
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(rows)
+}
+
+pub fn all_attachments_for_repair(conn: &Connection) -> anyhow::Result<Vec<AttachmentRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT a.id, a.filename, a.mime_type, a.total_bytes, a.resolved_path,
+                a.file_exists, a.transfer_name,
+                COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
+                m.date_unix,
+                c.id AS conversation_id,
+                a.ck_sync_state,
+                a.backup_source_path
+         FROM attachments a
+         JOIN messages m ON m.id = a.message_id
+         JOIN conversations c ON c.id = m.conversation_id
+         WHERE (a.filename IS NULL OR a.filename NOT LIKE '%.pluginPayloadAttachment')
+           AND (a.transfer_name IS NULL OR a.transfer_name NOT LIKE '%.pluginPayloadAttachment')",
+    )?;
+
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(AttachmentRow {
+                id: row.get(0)?,
+                filename: row.get(1)?,
+                mime_type: row.get(2)?,
+                total_bytes: row.get(3)?,
+                resolved_path: row.get(4)?,
+                file_exists: row.get(5)?,
+                transfer_name: row.get(6)?,
+                conversation_name: row.get(7)?,
+                message_date: row.get(8)?,
+                conversation_id: row.get(9)?,
+                ck_sync_state: row.get(10)?,
+                backup_source_path: row.get(11)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
+pub fn update_attachment_availability(
+    conn: &Connection,
+    id: i64,
+    resolved_path: Option<&str>,
+    file_exists: bool,
+    backup_source_path: Option<&str>,
+) -> anyhow::Result<()> {
+    conn.execute(
+        "UPDATE attachments
+         SET resolved_path = ?1,
+             file_exists = ?2,
+             backup_source_path = ?3
+         WHERE id = ?4",
+        rusqlite::params![resolved_path, file_exists, backup_source_path, id],
+    )?;
+    Ok(())
 }
 
 pub fn update_attachment_backup_source(

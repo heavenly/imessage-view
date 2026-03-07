@@ -168,7 +168,7 @@ fn build_message_id_map(port_db: &Connection) -> Result<HashMap<i64, i64>> {
     Ok(map)
 }
 
-fn resolve_path(filename: Option<&str>, home: &str) -> (Option<String>, bool) {
+pub fn resolve_path(filename: Option<&str>, home: &str) -> (Option<String>, bool) {
     let path_str = match filename {
         Some(f) if !f.is_empty() => f,
         _ => return (None, false),

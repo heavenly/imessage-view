@@ -72,7 +72,10 @@
                             <div class="im-attachment">
                                 {% if att.is_image %}
                                     <div class="im-attachment-image{% if att.is_sticker %} im-attachment-image--sticker{% endif %}">
-                                        <img src="/attachments/download/{{ att.id }}" alt="" loading="lazy">
+                                        <a href="/attachments/download/{{ att.id }}">
+                                            <img src="/attachments/thumbnail/{{ att.id }}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                                            <span class="im-attachment-fallback">🖼</span>
+                                        </a>
                                     </div>
                                 {% else %}
                                     {% if let Some(mime) = att.mime_type %}

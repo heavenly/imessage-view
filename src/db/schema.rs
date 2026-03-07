@@ -83,6 +83,7 @@ pub const CREATE_INDEXES: &[&str] = &[
     "CREATE INDEX IF NOT EXISTS idx_messages_conv_sender ON messages(conversation_id, is_from_me, sender_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)",
     "CREATE INDEX IF NOT EXISTS idx_messages_date ON messages(date_unix DESC)",
+    "CREATE INDEX IF NOT EXISTS idx_messages_reaction_target ON messages(conversation_id, associated_message_guid, date_unix, id) WHERE is_reaction = TRUE",
     "CREATE INDEX IF NOT EXISTS idx_attachments_message ON attachments(message_id)",
     "CREATE INDEX IF NOT EXISTS idx_attachments_mime ON attachments(mime_type)",
     "CREATE INDEX IF NOT EXISTS idx_contacts_handle ON contacts(handle)",

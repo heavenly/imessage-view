@@ -186,70 +186,145 @@ pub fn build_group_reaction_highlights(
     conn: &rusqlite::Connection,
     conversation_id: i64,
 ) -> Vec<GroupReactionHighlightView> {
-    let messages =
-        queries::get_conversation_reaction_messages(conn, conversation_id).unwrap_or_default();
-    if messages.is_empty() {
+    let rows = match queries::get_group_reaction_highlight_rows(conn, conversation_id) {
+        Ok(rows) => rows,
+        Err(err) => {
+            eprintln!(
+                "failed to load group reaction highlights for conversation {conversation_id}: {err}"
+            );
+            return vec![];
+        }
+    };
+
+    if rows.is_empty() {
         return vec![];
     }
 
-    let message_guids: Vec<String> = messages
-        .iter()
-        .map(|message| message.guid.clone())
-        .collect();
-    let reactions_by_guid =
-        queries::get_reactions_for_messages(conn, &message_guids).unwrap_or_default();
-
-    struct EffectiveMessage<'a> {
-        message: &'a queries::ConversationReactionMessage,
-        counts: HashMap<i64, i64>,
-        varied_count: i64,
+    #[derive(Clone)]
+    struct MessageSummary {
+        id: i64,
+        body: Option<String>,
+        date_unix: i64,
+        sender_name: Option<String>,
+        has_attachments: bool,
     }
 
-    let effective_messages: Vec<EffectiveMessage<'_>> = messages
-        .iter()
-        .filter_map(|message| {
-            let mut by_sender: HashMap<String, i64> = HashMap::new();
-            if let Some(reactions) = reactions_by_guid.get(&message.guid) {
-                for reaction in reactions {
-                    let sender_key = if reaction.is_from_me {
-                        "me".to_string()
-                    } else {
-                        reaction
-                            .sender_name
-                            .clone()
-                            .unwrap_or_else(|| "unknown".to_string())
-                    };
+    #[derive(Clone)]
+    struct BestHighlight {
+        count: i64,
+        message: MessageSummary,
+    }
 
-                    if (3000..=3007).contains(&reaction.reaction_type) {
-                        by_sender.remove(&sender_key);
-                    } else if built_in_reaction_glyph(reaction.reaction_type).is_some() {
-                        by_sender.insert(sender_key, reaction.reaction_type);
-                    } else {
-                        by_sender.remove(&sender_key);
-                    }
+    fn update_best(best: &mut Option<BestHighlight>, count: i64, message: &MessageSummary) {
+        let candidate = BestHighlight {
+            count,
+            message: message.clone(),
+        };
+
+        let should_replace = match best {
+            Some(current) => {
+                (
+                    candidate.count,
+                    candidate.message.date_unix,
+                    candidate.message.id,
+                ) > (current.count, current.message.date_unix, current.message.id)
+            }
+            None => true,
+        };
+
+        if should_replace {
+            *best = Some(candidate);
+        }
+    }
+
+    fn finalize_effective_message(
+        message: &Option<MessageSummary>,
+        by_sender: &HashMap<String, i64>,
+        reaction_winners: &mut HashMap<i64, BestHighlight>,
+        varied_winner: &mut Option<BestHighlight>,
+    ) {
+        let Some(message) = message else {
+            return;
+        };
+
+        let mut counts: HashMap<i64, i64> = HashMap::new();
+        for reaction_type in by_sender.values().copied() {
+            *counts.entry(reaction_type).or_insert(0) += 1;
+        }
+
+        if counts.is_empty() {
+            return;
+        }
+
+        for (&reaction_type, &count) in &counts {
+            let should_replace = match reaction_winners.get(&reaction_type) {
+                Some(current) => {
+                    (count, message.date_unix, message.id)
+                        > (current.count, current.message.date_unix, current.message.id)
                 }
+                None => true,
+            };
+
+            if should_replace {
+                reaction_winners.insert(
+                    reaction_type,
+                    BestHighlight {
+                        count,
+                        message: message.clone(),
+                    },
+                );
             }
+        }
 
-            let mut counts: HashMap<i64, i64> = HashMap::new();
-            for reaction_type in by_sender.into_values() {
-                *counts.entry(reaction_type).or_insert(0) += 1;
-            }
-
-            if counts.is_empty() {
-                return None;
-            }
-
-            Some(EffectiveMessage {
-                message,
-                varied_count: counts.len() as i64,
-                counts,
-            })
-        })
-        .collect();
-
-    if effective_messages.is_empty() {
-        return vec![];
+        update_best(varied_winner, counts.len() as i64, message);
     }
+
+    let mut current_message_id = None;
+    let mut current_message: Option<MessageSummary> = None;
+    let mut by_sender: HashMap<String, i64> = HashMap::new();
+    let mut reaction_winners: HashMap<i64, BestHighlight> = HashMap::new();
+    let mut varied_winner: Option<BestHighlight> = None;
+
+    for row in rows {
+        if current_message_id != Some(row.message_id) {
+            finalize_effective_message(
+                &current_message,
+                &by_sender,
+                &mut reaction_winners,
+                &mut varied_winner,
+            );
+            current_message_id = Some(row.message_id);
+            current_message = Some(MessageSummary {
+                id: row.message_id,
+                body: row.message_body.clone(),
+                date_unix: row.message_date_unix,
+                sender_name: row.message_sender_name.clone(),
+                has_attachments: row.message_has_attachments,
+            });
+            by_sender.clear();
+        }
+
+        let sender_key = if row.reaction_is_from_me {
+            "me".to_string()
+        } else {
+            row.reaction_sender_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string())
+        };
+
+        if (3000..=3007).contains(&row.reaction_type) {
+            by_sender.remove(&sender_key);
+        } else if built_in_reaction_glyph(row.reaction_type).is_some() {
+            by_sender.insert(sender_key, row.reaction_type);
+        }
+    }
+
+    finalize_effective_message(
+        &current_message,
+        &by_sender,
+        &mut reaction_winners,
+        &mut varied_winner,
+    );
 
     let mut highlights = Vec::new();
     for (reaction_type, title) in [
@@ -260,58 +335,33 @@ pub fn build_group_reaction_highlights(
         (2004, "Most Exclaimed"),
         (2005, "Most Questioned"),
     ] {
-        if let Some(best) = effective_messages
-            .iter()
-            .filter_map(|message| {
-                message
-                    .counts
-                    .get(&reaction_type)
-                    .copied()
-                    .map(|count| (message, count))
-            })
-            .max_by(|left, right| {
-                left.1
-                    .cmp(&right.1)
-                    .then_with(|| left.0.message.date_unix.cmp(&right.0.message.date_unix))
-                    .then_with(|| left.0.message.id.cmp(&right.0.message.id))
-            })
-        {
+        if let Some(best) = reaction_winners.get(&reaction_type) {
             let noun = built_in_reaction_noun(reaction_type).unwrap_or("reaction");
             highlights.push(GroupReactionHighlightView {
                 title: title.to_string(),
                 glyph: built_in_reaction_glyph(reaction_type)
                     .unwrap_or("?")
                     .to_string(),
-                metric: format!("{} {}", best.1, pluralize(noun, best.1)),
+                metric: format!("{} {}", best.count, pluralize(noun, best.count)),
                 sender_name: best
-                    .0
                     .message
                     .sender_name
                     .clone()
                     .unwrap_or_else(|| "Unknown".to_string()),
                 preview: message_preview(
-                    best.0.message.body.as_deref(),
-                    best.0.message.has_attachments,
+                    best.message.body.as_deref(),
+                    best.message.has_attachments,
                 ),
-                message_id: best.0.message.id,
+                message_id: best.message.id,
             });
         }
     }
 
-    if let Some(best) = effective_messages.iter().max_by(|left, right| {
-        left.varied_count
-            .cmp(&right.varied_count)
-            .then_with(|| left.message.date_unix.cmp(&right.message.date_unix))
-            .then_with(|| left.message.id.cmp(&right.message.id))
-    }) {
+    if let Some(best) = varied_winner {
         highlights.push(GroupReactionHighlightView {
             title: "Most Varied Reactions".to_string(),
             glyph: "✨".to_string(),
-            metric: format!(
-                "{} {}",
-                best.varied_count,
-                pluralize("type", best.varied_count)
-            ),
+            metric: format!("{} {}", best.count, pluralize("type", best.count)),
             sender_name: best
                 .message
                 .sender_name
@@ -356,6 +406,7 @@ struct ConversationPanelTemplate {
     conversation_id: i64,
     contact_name: String,
     is_group: bool,
+    primary_contact_id: Option<i64>,
     participants: Vec<String>,
     attachment_count: i64,
     has_photo: bool,
@@ -376,6 +427,8 @@ pub async fn conversation_panel_partial(
     let id = params.id;
     let conn = state.db.lock().unwrap();
     let info = queries::get_conversation_info(&conn, id);
+    let primary_contact_id =
+        queries::get_primary_contact_id_for_conversation(&conn, id).unwrap_or_default();
 
     let (contact_name, is_group, participants, has_photo) = match info {
         Ok(info) => {
@@ -430,6 +483,7 @@ pub async fn conversation_panel_partial(
         conversation_id: id,
         contact_name,
         is_group,
+        primary_contact_id,
         participants,
         attachment_count,
         has_photo,

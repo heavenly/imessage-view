@@ -125,6 +125,7 @@ struct ConversationTemplate {
     conversation_id: i64,
     contact_name: String,
     is_group: bool,
+    primary_contact_id: Option<i64>,
     participants: Vec<String>,
     attachment_count: i64,
     has_photo: bool,
@@ -150,6 +151,8 @@ pub async fn conversation(
 ) -> impl IntoResponse {
     let conn = state.db.lock().unwrap();
     let info = queries::get_conversation_info(&conn, id);
+    let primary_contact_id =
+        queries::get_primary_contact_id_for_conversation(&conn, id).unwrap_or_default();
 
     let (contact_name, is_group, participants, has_photo) = match info {
         Ok(info) => {
@@ -205,6 +208,7 @@ pub async fn conversation(
         conversation_id: id,
         contact_name,
         is_group,
+        primary_contact_id,
         participants,
         attachment_count,
         has_photo,
@@ -374,66 +378,6 @@ pub async fn attachments_page(
 }
 
 #[derive(Debug)]
-struct TopConversation {
-    rank: usize,
-    id: i64,
-    name: String,
-    count: i64,
-}
-
-#[derive(Debug)]
-struct TopContact {
-    rank: usize,
-    id: i64,
-    name: String,
-    handle: String,
-    count: i64,
-}
-
-#[derive(Debug)]
-struct MonthBar {
-    label: String,
-    count: i64,
-    pct: f64,
-}
-
-fn format_bytes(bytes: i64) -> String {
-    const KB: f64 = 1024.0;
-    const MB: f64 = KB * 1024.0;
-    const GB: f64 = MB * 1024.0;
-    let b = bytes as f64;
-    if b >= GB {
-        format!("{:.1} GB", b / GB)
-    } else if b >= MB {
-        format!("{:.1} MB", b / MB)
-    } else if b >= KB {
-        format!("{:.1} KB", b / KB)
-    } else {
-        format!("{bytes} B")
-    }
-}
-
-#[derive(Template)]
-#[template(path = "analytics.html")]
-struct AnalyticsTemplate {
-    title: String,
-    total_messages: i64,
-    total_conversations: i64,
-    total_contacts: i64,
-    total_attachments: i64,
-    earliest: String,
-    latest: String,
-    top_conversations: Vec<TopConversation>,
-    top_contacts: Vec<TopContact>,
-    month_bars: Vec<MonthBar>,
-    att_images: i64,
-    att_videos: i64,
-    att_audio: i64,
-    att_other: i64,
-    att_total_size: String,
-}
-
-#[derive(Debug)]
 struct ContactInsightDayBar {
     label: String,
     count: i64,
@@ -517,93 +461,6 @@ fn build_trend(trend: &queries::ContactTrendStats) -> (String, String) {
             ),
         ),
     }
-}
-
-pub async fn analytics(State(state): State<AppState>) -> impl IntoResponse {
-    let conn = state.db.lock().unwrap();
-
-    let overall = queries::overall_stats(&conn).unwrap_or(queries::OverallStats {
-        total_messages: 0,
-        total_conversations: 0,
-        total_contacts: 0,
-        total_attachments: 0,
-        earliest_message: None,
-        latest_message: None,
-    });
-
-    let convos = queries::messages_per_conversation(&conn, 10).unwrap_or_default();
-    let top_conversations: Vec<TopConversation> = convos
-        .into_iter()
-        .enumerate()
-        .map(|(i, (id, name, count))| TopConversation {
-            rank: i + 1,
-            id,
-            name,
-            count,
-        })
-        .collect();
-
-    let contacts = queries::top_contacts(&conn, 10).unwrap_or_default();
-    let top_contacts: Vec<TopContact> = contacts
-        .into_iter()
-        .enumerate()
-        .map(|(i, (id, name, handle, count))| TopContact {
-            rank: i + 1,
-            id,
-            name,
-            handle,
-            count,
-        })
-        .collect();
-
-    let time_data = queries::messages_over_time(&conn, "month").unwrap_or_default();
-    let last_12: Vec<&(String, i64)> = time_data
-        .iter()
-        .rev()
-        .take(12)
-        .collect::<Vec<_>>()
-        .into_iter()
-        .rev()
-        .collect();
-    let max_count = last_12.iter().map(|(_, c)| *c).max().unwrap_or(1);
-    let month_bars: Vec<MonthBar> = last_12
-        .into_iter()
-        .map(|(label, count)| MonthBar {
-            label: label.clone(),
-            count: *count,
-            pct: (*count as f64 / max_count as f64) * 100.0,
-        })
-        .collect();
-
-    let att = queries::attachment_stats(&conn).unwrap_or(queries::AttachmentStats {
-        total: 0,
-        images: 0,
-        videos: 0,
-        audio: 0,
-        other: 0,
-        total_bytes: 0,
-    });
-
-    let t = AnalyticsTemplate {
-        title: "Analytics".to_string(),
-        total_messages: overall.total_messages,
-        total_conversations: overall.total_conversations,
-        total_contacts: overall.total_contacts,
-        total_attachments: overall.total_attachments,
-        earliest: overall
-            .earliest_message
-            .unwrap_or_else(|| "N/A".to_string()),
-        latest: overall.latest_message.unwrap_or_else(|| "N/A".to_string()),
-        top_conversations,
-        top_contacts,
-        month_bars,
-        att_images: att.images,
-        att_videos: att.videos,
-        att_audio: att.audio,
-        att_other: att.other,
-        att_total_size: format_bytes(att.total_bytes),
-    };
-    Html(t.render().unwrap_or_default())
 }
 
 pub async fn contact_insights(

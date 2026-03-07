@@ -4,164 +4,6 @@ use rusqlite::OptionalExtension;
 use serde::Serialize;
 
 #[derive(Debug, Serialize)]
-pub struct AttachmentStats {
-    pub total: i64,
-    pub images: i64,
-    pub videos: i64,
-    pub audio: i64,
-    pub other: i64,
-    pub total_bytes: i64,
-}
-
-#[derive(Debug, Serialize)]
-pub struct OverallStats {
-    pub total_messages: i64,
-    pub total_conversations: i64,
-    pub total_contacts: i64,
-    pub total_attachments: i64,
-    pub earliest_message: Option<String>,
-    pub latest_message: Option<String>,
-}
-
-pub fn messages_per_conversation(
-    conn: &Connection,
-    limit: u32,
-) -> anyhow::Result<Vec<(i64, String, i64)>> {
-    let mut stmt = conn.prepare(
-        "SELECT c.id,
-                COALESCE(c.display_name, c.guid, 'Unknown') AS name,
-                COUNT(m.id) AS cnt
-         FROM conversations c
-         JOIN messages m ON m.conversation_id = c.id
-         GROUP BY c.id
-         ORDER BY cnt DESC
-         LIMIT ?1",
-    )?;
-
-    let rows = stmt
-        .query_map([limit], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(rows)
-}
-
-pub fn messages_over_time(
-    conn: &Connection,
-    granularity: &str,
-) -> anyhow::Result<Vec<(String, i64)>> {
-    let fmt = match granularity {
-        "day" => "%Y-%m-%d",
-        "week" => "%Y-W%W",
-        "month" => "%Y-%m",
-        _ => "%Y-%m-%d",
-    };
-
-    let sql = format!(
-        "SELECT strftime('{fmt}', date_unix, 'unixepoch') AS period,
-                COUNT(*) AS cnt
-         FROM messages
-         WHERE date_unix IS NOT NULL
-         GROUP BY period
-         ORDER BY period"
-    );
-
-    let mut stmt = conn.prepare(&sql)?;
-    let rows = stmt
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(rows)
-}
-
-pub fn top_contacts(
-    conn: &Connection,
-    limit: u32,
-) -> anyhow::Result<Vec<(i64, String, String, i64)>> {
-    let mut stmt = conn.prepare(
-        "SELECT ct.id,
-                COALESCE(ct.display_name, ct.handle) AS name,
-                ct.handle,
-                COUNT(m.id) AS cnt
-         FROM contacts ct
-         JOIN messages m ON m.sender_id = ct.id
-         GROUP BY ct.id
-         ORDER BY cnt DESC
-         LIMIT ?1",
-    )?;
-
-    let rows = stmt
-        .query_map([limit], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
-
-    Ok(rows)
-}
-
-pub fn attachment_stats(conn: &Connection) -> anyhow::Result<AttachmentStats> {
-    let stats = conn.query_row(
-        "SELECT COUNT(*) AS total,
-                SUM(CASE WHEN mime_type LIKE 'image/%' THEN 1 ELSE 0 END) AS images,
-                SUM(CASE WHEN mime_type LIKE 'video/%' THEN 1 ELSE 0 END) AS videos,
-                SUM(CASE WHEN mime_type LIKE 'audio/%' THEN 1 ELSE 0 END) AS audio,
-                SUM(CASE WHEN mime_type NOT LIKE 'image/%'
-                          AND mime_type NOT LIKE 'video/%'
-                          AND mime_type NOT LIKE 'audio/%' THEN 1 ELSE 0 END) AS other,
-                COALESCE(SUM(total_bytes), 0) AS total_bytes
-         FROM attachments
-         WHERE (filename IS NULL OR filename NOT LIKE '%.pluginPayloadAttachment')
-           AND (transfer_name IS NULL OR transfer_name NOT LIKE '%.pluginPayloadAttachment')",
-        [],
-        |row| {
-            Ok(AttachmentStats {
-                total: row.get(0)?,
-                images: row.get(1)?,
-                videos: row.get(2)?,
-                audio: row.get(3)?,
-                other: row.get(4)?,
-                total_bytes: row.get(5)?,
-            })
-        },
-    )?;
-
-    Ok(stats)
-}
-
-pub fn overall_stats(conn: &Connection) -> anyhow::Result<OverallStats> {
-    let total_messages: i64 = conn.query_row("SELECT COUNT(*) FROM messages", [], |r| r.get(0))?;
-    let total_conversations: i64 =
-        conn.query_row("SELECT COUNT(*) FROM conversations", [], |r| r.get(0))?;
-    let total_contacts: i64 = conn.query_row("SELECT COUNT(*) FROM contacts", [], |r| r.get(0))?;
-    let total_attachments: i64 =
-        conn.query_row("SELECT COUNT(*) FROM attachments", [], |r| r.get(0))?;
-
-    let earliest_message: Option<String> = conn
-        .query_row(
-            "SELECT strftime('%Y-%m-%d', MIN(date_unix), 'unixepoch') FROM messages",
-            [],
-            |r| r.get(0),
-        )
-        .ok();
-
-    let latest_message: Option<String> = conn
-        .query_row(
-            "SELECT strftime('%Y-%m-%d', MAX(date_unix), 'unixepoch') FROM messages",
-            [],
-            |r| r.get(0),
-        )
-        .ok();
-
-    Ok(OverallStats {
-        total_messages,
-        total_conversations,
-        total_contacts,
-        total_attachments,
-        earliest_message,
-        latest_message,
-    })
-}
-
-#[derive(Debug, Serialize)]
 pub struct MessageRow {
     pub id: i64,
     pub guid: String,
@@ -195,13 +37,15 @@ pub struct MessageReaction {
 }
 
 #[derive(Debug, Serialize)]
-pub struct ConversationReactionMessage {
-    pub id: i64,
-    pub guid: String,
-    pub body: Option<String>,
-    pub date_unix: i64,
-    pub sender_name: Option<String>,
-    pub has_attachments: bool,
+pub struct GroupReactionHighlightRow {
+    pub message_id: i64,
+    pub message_body: Option<String>,
+    pub message_date_unix: i64,
+    pub message_sender_name: Option<String>,
+    pub message_has_attachments: bool,
+    pub reaction_is_from_me: bool,
+    pub reaction_sender_name: Option<String>,
+    pub reaction_type: i64,
 }
 
 fn map_message_row(row: &rusqlite::Row) -> rusqlite::Result<MessageRow> {
@@ -281,6 +125,27 @@ pub fn get_conversation_info(
         participant_names: names,
         has_photo,
     })
+}
+
+pub fn get_primary_contact_id_for_conversation(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Option<i64>> {
+    let contact_id = conn
+        .query_row(
+            "SELECT cp.contact_id
+             FROM conversation_participants cp
+             JOIN conversations c ON c.id = cp.conversation_id
+             WHERE cp.conversation_id = ?1
+               AND c.is_group = 0
+             ORDER BY cp.contact_id
+             LIMIT 1",
+            [conversation_id],
+            |row| row.get(0),
+        )
+        .optional()?;
+
+    Ok(contact_id)
 }
 
 pub fn get_messages(
@@ -496,33 +361,51 @@ pub fn get_messages_after(
     Ok(rows)
 }
 
-pub fn get_conversation_reaction_messages(
+pub fn get_group_reaction_highlight_rows(
     conn: &Connection,
     conversation_id: i64,
-) -> anyhow::Result<Vec<ConversationReactionMessage>> {
+) -> anyhow::Result<Vec<GroupReactionHighlightRow>> {
     let mut stmt = conn.prepare(
-        "SELECT m.id,
-                m.guid,
-                m.body,
-                m.date_unix,
-                COALESCE(ct.display_name, ct.handle) AS sender_name,
-                m.has_attachments
-         FROM messages m
-         LEFT JOIN contacts ct ON ct.id = m.sender_id
-         WHERE m.conversation_id = ?1
-           AND m.is_reaction = FALSE
-         ORDER BY m.date_unix DESC, m.id DESC",
+        "WITH reacted_messages AS (
+             SELECT DISTINCT associated_message_guid
+             FROM messages
+             WHERE conversation_id = ?1
+               AND is_reaction = TRUE
+               AND reaction_type BETWEEN 2000 AND 3007
+               AND associated_message_guid IS NOT NULL
+         )
+         SELECT tm.id,
+                tm.body,
+                tm.date_unix,
+                COALESCE(tct.display_name, tct.handle) AS message_sender_name,
+                tm.has_attachments,
+                r.is_from_me,
+                COALESCE(rct.display_name, rct.handle) AS reaction_sender_name,
+                r.reaction_type
+         FROM reacted_messages rm
+         JOIN messages tm ON tm.guid = rm.associated_message_guid
+         JOIN messages r ON r.associated_message_guid = tm.guid
+         LEFT JOIN contacts tct ON tct.id = tm.sender_id
+         LEFT JOIN contacts rct ON rct.id = r.sender_id
+         WHERE tm.conversation_id = ?1
+           AND tm.is_reaction = FALSE
+           AND r.conversation_id = ?1
+           AND r.is_reaction = TRUE
+           AND r.reaction_type BETWEEN 2000 AND 3007
+         ORDER BY tm.date_unix DESC, tm.id DESC, r.date_unix ASC, r.id ASC",
     )?;
 
     let rows = stmt
         .query_map([conversation_id], |row| {
-            Ok(ConversationReactionMessage {
-                id: row.get(0)?,
-                guid: row.get(1)?,
-                body: row.get(2)?,
-                date_unix: row.get(3)?,
-                sender_name: row.get(4)?,
-                has_attachments: row.get(5)?,
+            Ok(GroupReactionHighlightRow {
+                message_id: row.get(0)?,
+                message_body: row.get(1)?,
+                message_date_unix: row.get(2)?,
+                message_sender_name: row.get(3)?,
+                message_has_attachments: row.get(4)?,
+                reaction_is_from_me: row.get(5)?,
+                reaction_sender_name: row.get(6)?,
+                reaction_type: row.get(7)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

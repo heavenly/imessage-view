@@ -1,26 +1,15 @@
 {% extends "base.html" %}
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
-<div class="im-sidebar">
-    <div class="im-sidebar-header">
-        <h1>iMessage</h1>
-        <input type="search"
-               name="q"
-               class="im-search"
-               placeholder="Search"
-               hx-get="/partials/unified-search"
-               hx-trigger="input changed delay:300ms, search"
-               hx-target="#conversations-list"
-               hx-swap="innerHTML"
-               hx-push-url="false">
-    </div>
-    <div id="conversations-list" class="im-conversation-list">
-    </div>
-</div>
-<div class="im-main">
+<div class="im-main" style="width: 100%; max-width: 100%;">
     <div style="padding: 20px; overflow-y: auto; height: 100%;">
-        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; margin-bottom: 1.5rem;">
-            <div style="display: flex; gap: 1rem; align-items: center;">
+        <div style="position: relative; display: flex; justify-content: center; align-items: center; min-height: 88px; margin-bottom: 1.5rem;">
+            <div style="position: absolute; left: 0; top: 0;">
+                {% if has_conversation %}
+                <a href="{{ conversation_link }}" style="display: inline-flex; align-items: center; justify-content: center; padding: 0.75rem 1rem; border-radius: 999px; text-decoration: none; background: var(--im-bg-secondary); color: var(--im-text-primary); font-weight: 600;">Back</a>
+                {% endif %}
+            </div>
+            <div style="display: flex; gap: 1rem; align-items: center; justify-content: center; text-align: left;">
                 {% if has_photo %}
                 <img src="/contacts/{{ contact_id }}/photo" alt="{{ contact_name }}" style="width: 72px; height: 72px; border-radius: 20px; object-fit: cover; background: var(--im-bg-secondary);">
                 {% else %}
@@ -29,16 +18,10 @@
                 </div>
                 {% endif %}
                 <div>
-                    <div style="font-size: 0.9rem; color: var(--im-text-secondary); margin-bottom: 0.35rem;"><a href="/analytics" style="color: var(--im-text-secondary); text-decoration: none;">Analytics</a> / Contact Insights</div>
+                    <div style="font-size: 0.9rem; color: var(--im-text-secondary); margin-bottom: 0.35rem;">Contact Insights</div>
                     <h1 style="font-size: 2rem; margin: 0 0 0.35rem;">{{ contact_name }}</h1>
                     <div style="color: var(--im-text-secondary);">{{ contact_handle }}</div>
                 </div>
-            </div>
-            <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
-                {% if has_conversation %}
-                <a href="{{ conversation_link }}" style="padding: 0.75rem 1rem; border-radius: 999px; text-decoration: none; background: var(--im-accent); color: white; font-weight: 600;">Open Conversation</a>
-                {% endif %}
-                <a href="/analytics" style="padding: 0.75rem 1rem; border-radius: 999px; text-decoration: none; background: var(--im-bg-secondary); color: var(--im-text-primary); font-weight: 600;">Back to Analytics</a>
             </div>
         </div>
 

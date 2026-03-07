@@ -20,7 +20,6 @@ pub fn router() -> Router<AppState> {
         .route("/attachments", get(pages::attachments_page))
         .route("/attachments/download/{id}", get(attachments::download))
         .route("/attachments/thumbnail/{id}", get(attachments::thumbnail))
-        .route("/analytics", get(pages::analytics))
         .route("/recovery", get(recovery::recovery_page))
         .route("/partials/messages", get(partials::messages_partial))
         .route(

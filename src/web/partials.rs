@@ -798,9 +798,9 @@ struct MessageView {
     has_attachments: bool,
     time_formatted: String,
     date_formatted: String,
-    attachments: Vec<AttachmentView>,
+    media_attachments: Vec<AttachmentView>,
+    file_attachments: Vec<AttachmentView>,
     reactions: Vec<ReactionView>,
-    use_attachment_grid: bool,
     is_sticker_only: bool,
     sender_id: Option<i64>,
     has_sender_photo: bool,
@@ -814,6 +814,7 @@ struct MessageGroup {
     has_sender_photo: bool,
 }
 
+#[derive(Clone)]
 struct AttachmentView {
     id: i64,
     mime_type: Option<String>,
@@ -1065,10 +1066,16 @@ pub async fn messages_partial(
                     }
                 })
                 .collect();
-            let image_attachment_count = attachments
+            let media_attachments: Vec<AttachmentView> = attachments
                 .iter()
                 .filter(|att| att.is_image && !att.is_sticker)
-                .count();
+                .cloned()
+                .collect();
+            let file_attachments: Vec<AttachmentView> = attachments
+                .iter()
+                .filter(|att| !att.is_image || att.is_sticker)
+                .cloned()
+                .collect();
             let is_sticker_only = m.body.as_deref().unwrap_or_default().trim().is_empty()
                 && !attachments.is_empty()
                 && attachments.iter().all(|att| att.is_sticker);
@@ -1084,9 +1091,9 @@ pub async fn messages_partial(
                 has_attachments: m.has_attachments,
                 time_formatted,
                 date_formatted,
-                attachments,
+                media_attachments,
+                file_attachments,
                 reactions,
-                use_attachment_grid: image_attachment_count > 1,
                 is_sticker_only,
                 sender_id: m.sender_id,
                 has_sender_photo: m.has_sender_photo,

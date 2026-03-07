@@ -67,8 +67,55 @@
                         {% endif %}
                         
                         {% if msg.has_attachments %}
-                        <div class="im-attachments{% if msg.use_attachment_grid %} im-attachments--grid{% endif %}">
-                            {% for att in msg.attachments %}
+                        <div class="im-attachments">
+                            {% if !msg.media_attachments.is_empty() %}
+                                {% if msg.media_attachments.len() > 1 %}
+                                <div class="im-message-gallery" data-gallery data-active-index="0" data-gallery-size="{{ msg.media_attachments.len() }}">
+                                    <button class="im-message-gallery-label" type="button" data-gallery-toggle>
+                                        {{ msg.media_attachments.len() }} Photos
+                                    </button>
+                                    <div class="im-message-gallery-stack" data-gallery-stack>
+                                        <div class="im-message-gallery-sheet im-message-gallery-sheet--back" data-gallery-sheet-back>
+                                            <img src="/attachments/thumbnail/{{ msg.media_attachments[0].id }}" alt="" loading="lazy" data-gallery-back-image onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                                            <span class="im-attachment-fallback im-attachment-fallback--gallery" data-gallery-back-fallback>🖼</span>
+                                        </div>
+                                        <div class="im-message-gallery-sheet im-message-gallery-sheet--mid" data-gallery-sheet-mid>
+                                            <img src="/attachments/thumbnail/{{ msg.media_attachments[0].id }}" alt="" loading="lazy" data-gallery-mid-image onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                                            <span class="im-attachment-fallback im-attachment-fallback--gallery" data-gallery-mid-fallback>🖼</span>
+                                        </div>
+                                        <button class="im-message-gallery-main" type="button" data-gallery-open>
+                                            <img src="/attachments/thumbnail/{{ msg.media_attachments[0].id }}" alt="" loading="lazy" data-gallery-image onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                                            <span class="im-attachment-fallback im-attachment-fallback--gallery" data-gallery-fallback>🖼</span>
+                                        </button>
+                                        <button class="im-message-gallery-nav im-message-gallery-nav--prev" type="button" aria-label="Previous image" data-gallery-prev>
+                                            &#8249;
+                                        </button>
+                                        <button class="im-message-gallery-nav im-message-gallery-nav--next" type="button" aria-label="Next image" data-gallery-next>
+                                            &#8250;
+                                        </button>
+                                    </div>
+                                    <div class="im-message-gallery-grid" data-gallery-grid>
+                                        {% for att in msg.media_attachments %}
+                                        <button class="im-message-gallery-tile{% if loop.index0 == 0 %} is-active{% endif %}" type="button" data-gallery-tile data-index="{{ loop.index0 }}" data-id="{{ att.id }}">
+                                            <img src="/attachments/thumbnail/{{ att.id }}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                                            <span class="im-attachment-fallback im-attachment-fallback--gallery">🖼</span>
+                                        </button>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                {% else %}
+                                <div class="im-attachment">
+                                    <div class="im-attachment-image">
+                                        <button class="im-message-gallery-main im-message-gallery-main--single" type="button" data-gallery-open data-gallery-id="{{ msg.media_attachments[0].id }}">
+                                            <img src="/attachments/thumbnail/{{ msg.media_attachments[0].id }}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+                                            <span class="im-attachment-fallback">🖼</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            {% endif %}
+
+                            {% for att in msg.file_attachments %}
                             <div class="im-attachment">
                                 {% if att.is_image %}
                                     <div class="im-attachment-image{% if att.is_sticker %} im-attachment-image--sticker{% endif %}">

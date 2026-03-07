@@ -9,6 +9,10 @@ use crate::db::queries;
 use crate::search;
 use crate::state::AppState;
 
+use super::format::{
+    display_initial, format_contact_label, format_contact_list, format_contact_value,
+    format_conversation_name,
+};
 use super::pages::ConversationRow;
 
 #[derive(Deserialize)]
@@ -182,6 +186,37 @@ pub struct GroupReactionHighlightView {
     pub sender_name: String,
     pub preview: String,
     pub message_id: i64,
+}
+
+#[derive(Debug, Clone)]
+pub struct GroupParticipantStatView {
+    pub contact_id: Option<i64>,
+    pub name: String,
+    pub initial: String,
+    pub message_count: i64,
+    pub percentage: String,
+    pub has_photo: bool,
+}
+
+pub fn build_group_participant_stat_views(
+    conn: &rusqlite::Connection,
+    conversation_id: i64,
+) -> Vec<GroupParticipantStatView> {
+    queries::get_group_participant_stats(conn, conversation_id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|participant| {
+            let name = format_contact_value(&participant.name);
+            GroupParticipantStatView {
+                contact_id: participant.contact_id,
+                initial: display_initial(&name),
+                name,
+                message_count: participant.message_count,
+                percentage: participant.percentage,
+                has_photo: participant.has_photo,
+            }
+        })
+        .collect()
 }
 
 fn built_in_reaction_glyph(reaction_type: i64) -> Option<&'static str> {
@@ -404,6 +439,7 @@ pub fn build_group_reaction_highlights(
                     .message
                     .sender_name
                     .clone()
+                    .map(|name| format_contact_value(&name))
                     .unwrap_or_else(|| "Unknown".to_string()),
                 preview: message_preview(
                     best.message.body.as_deref(),
@@ -423,6 +459,7 @@ pub fn build_group_reaction_highlights(
                 .message
                 .sender_name
                 .clone()
+                .map(|name| format_contact_value(&name))
                 .unwrap_or_else(|| "Unknown".to_string()),
             preview: message_preview(best.message.body.as_deref(), best.message.has_attachments),
             message_id: best.message.id,
@@ -461,6 +498,7 @@ pub fn build_hourly_stat_views(
 #[template(path = "partials/conversation_panel.html")]
 struct ConversationPanelTemplate {
     conversation_id: i64,
+    contact_initial: String,
     contact_name: String,
     is_group: bool,
     primary_contact_id: Option<i64>,
@@ -474,7 +512,7 @@ struct ConversationPanelTemplate {
     conversation_started_at: Option<String>,
     conversation_started_ago: Option<String>,
     focus_message_id: Option<i64>,
-    group_participant_stats: Vec<queries::GroupParticipantStat>,
+    group_participant_stats: Vec<GroupParticipantStatView>,
     reaction_highlights: Vec<GroupReactionHighlightView>,
     hourly_stats: Vec<HourlyStatView>,
 }
@@ -491,18 +529,10 @@ pub async fn conversation_panel_partial(
 
     let (contact_name, is_group, participants, has_photo) = match info {
         Ok(info) => {
-            let name = info
-                .display_name
-                .clone()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| {
-                    if info.participant_names.is_empty() {
-                        "Unknown".to_string()
-                    } else {
-                        info.participant_names.join(", ")
-                    }
-                });
-            (name, info.is_group, info.participant_names, info.has_photo)
+            let name =
+                format_conversation_name(info.display_name.as_deref(), &info.participant_names);
+            let participants = format_contact_list(&info.participant_names);
+            (name, info.is_group, participants, info.has_photo)
         }
         Err(_) => ("Unknown".to_string(), false, vec![], false),
     };
@@ -532,7 +562,7 @@ pub async fn conversation_panel_partial(
     };
 
     let (group_participant_stats, reaction_highlights, hourly_stats) = if is_group {
-        let stats = queries::get_group_participant_stats(&conn, id).unwrap_or_default();
+        let stats = build_group_participant_stat_views(&conn, id);
         let reaction_highlights = build_group_reaction_highlights(&conn, id);
         (stats, reaction_highlights, vec![])
     } else {
@@ -542,6 +572,7 @@ pub async fn conversation_panel_partial(
 
     let t = ConversationPanelTemplate {
         conversation_id: id,
+        contact_initial: display_initial(&contact_name),
         contact_name,
         is_group,
         primary_contact_id,
@@ -577,6 +608,7 @@ struct MessageView {
     body_html: Option<String>,
     is_from_me: bool,
     service: Option<String>,
+    sender_initial: Option<String>,
     sender_name: Option<String>,
     has_attachments: bool,
     time_formatted: String,
@@ -857,12 +889,14 @@ pub async fn messages_partial(
                 && !attachments.is_empty()
                 && attachments.iter().all(|att| att.is_sticker);
             let reactions = build_reactions(reaction_map.remove(&m.guid).unwrap_or_default());
+            let sender_name = m.sender_name.map(|name| format_contact_value(&name));
             MessageView {
                 id: m.id,
                 body_html: m.body.as_deref().map(linkify_text),
                 is_from_me: m.is_from_me,
                 service: m.service,
-                sender_name: m.sender_name,
+                sender_initial: sender_name.as_deref().map(display_initial),
+                sender_name,
                 has_attachments: m.has_attachments,
                 time_formatted,
                 date_formatted,
@@ -1011,12 +1045,11 @@ pub async fn search_results_partial(
             let sender_label = if r.is_from_me {
                 "Me".to_string()
             } else {
-                r.sender_name
-                    .or(r.sender_handle)
-                    .unwrap_or_else(|| "Unknown".to_string())
+                format_contact_label(r.sender_name.as_deref(), r.sender_handle.as_deref())
             };
             let conversation_label = r
                 .conversation_name
+                .map(|label| format_contact_value(&label))
                 .unwrap_or_else(|| format!("Conversation {}", r.conversation_id));
             let snippet = r.highlighted_body.or(r.body).unwrap_or_default();
             SearchResultView {
@@ -1080,6 +1113,7 @@ pub struct UnifiedSearchQuery {
 
 struct UnifiedConversationHit {
     id: i64,
+    initial: String,
     name: String,
     is_group: bool,
     has_photo: bool,
@@ -1136,15 +1170,10 @@ pub async fn unified_search_partial(
         list.into_iter()
             .take(20)
             .map(|c| {
-                let name = c
-                    .display_name
-                    .as_ref()
-                    .filter(|s| !s.is_empty())
-                    .cloned()
-                    .or(c.handle.clone())
-                    .unwrap_or_else(|| "Unknown".to_string());
+                let name = format_contact_label(c.display_name.as_deref(), c.handle.as_deref());
                 UnifiedConversationHit {
                     id: c.id,
+                    initial: display_initial(&name),
                     name,
                     is_group: c.is_group,
                     has_photo: c.has_photo,
@@ -1166,12 +1195,11 @@ pub async fn unified_search_partial(
             let sender_label = if r.is_from_me {
                 "Me".to_string()
             } else {
-                r.sender_name
-                    .or(r.sender_handle)
-                    .unwrap_or_else(|| "Unknown".to_string())
+                format_contact_label(r.sender_name.as_deref(), r.sender_handle.as_deref())
             };
             let conversation_label = r
                 .conversation_name
+                .map(|label| format_contact_value(&label))
                 .unwrap_or_else(|| format!("Conversation {}", r.conversation_id));
             let snippet = r.highlighted_body.or(r.body).unwrap_or_default();
             UnifiedMessageHit {

@@ -7,7 +7,7 @@
                 {% if has_photo %}
                 <img src="/conversations/{{ conversation_id }}/photo" alt="" onload="this.classList.add('loaded')">
                 {% else %}
-                <span class="im-avatar-initial">{% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}</span>
+                <span class="im-avatar-initial">{% if is_group %}👥{% else %}{{ contact_initial }}{% endif %}</span>
                 {% endif %}
             </div>
             <div class="im-chat-header-text">
@@ -80,7 +80,7 @@
                             {% if p.has_photo %}
                             <img src="/contacts/{{ cid }}/photo" alt="" onload="this.classList.add('loaded')">
                             {% else %}
-                            <span class="im-avatar-initial">{{ p.name.chars().next().unwrap_or('?') }}</span>
+                            <span class="im-avatar-initial">{{ p.initial }}</span>
                             {% endif %}
                         </div>
                         <div class="im-participant-info">
@@ -93,9 +93,9 @@
                 <li class="im-participant-item">
                     <div class="im-avatar im-avatar--small">
                         {% if p.has_photo %}
-                        <span class="im-avatar-initial">{{ p.name.chars().next().unwrap_or('?') }}</span>
+                        <span class="im-avatar-initial">{{ p.initial }}</span>
                         {% else %}
-                        <span class="im-avatar-initial">{{ p.name.chars().next().unwrap_or('?') }}</span>
+                        <span class="im-avatar-initial">{{ p.initial }}</span>
                         {% endif %}
                     </div>
                     <div class="im-participant-info">
@@ -181,7 +181,7 @@
                 {% if has_photo %}
                 <img src="/conversations/{{ conversation_id }}/photo" alt="" onload="this.classList.add('loaded')">
                 {% else %}
-                <span class="im-avatar-initial">{% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}</span>
+                <span class="im-avatar-initial">{% if is_group %}👥{% else %}{{ contact_initial }}{% endif %}</span>
                 {% endif %}
             </div>
             <div style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 0.25rem;">

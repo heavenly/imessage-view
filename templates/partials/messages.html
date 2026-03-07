@@ -45,8 +45,8 @@
                     <img src="/contacts/{{ sid }}/photo" alt="" />
                     {% endif %}
                 {% else %}
-                    {% if let Some(name) = group.messages[0].sender_name %}
-                        {{ name.chars().next().unwrap_or('?') }}
+                    {% if let Some(initial) = group.messages[0].sender_initial %}
+                        {{ initial }}
                     {% else %}
                         ?
                     {% endif %}

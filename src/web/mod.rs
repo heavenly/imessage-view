@@ -1,4 +1,5 @@
 pub mod attachments;
+pub mod format;
 pub mod pages;
 pub mod partials;
 pub mod recovery;

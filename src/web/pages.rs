@@ -4,9 +4,15 @@ use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse};
 use serde::{Deserialize, Serialize};
 
-use super::partials::{ContributionDay, GroupReactionHighlightView, HourlyStatView};
 use crate::db::queries;
 use crate::state::AppState;
+
+use super::format::{
+    display_initial, format_contact_label, format_contact_value, format_conversation_name,
+};
+use super::partials::{
+    ContributionDay, GroupParticipantStatView, GroupReactionHighlightView, HourlyStatView,
+};
 
 fn relative_time(unix: i64) -> String {
     let now = chrono::Utc::now().timestamp();
@@ -32,6 +38,7 @@ fn relative_time(unix: i64) -> String {
 #[derive(Debug)]
 pub struct ConversationRow {
     pub id: i64,
+    pub initial: String,
     pub name: String,
     pub last_preview: String,
     pub relative_date: String,
@@ -65,21 +72,13 @@ pub fn build_conversation_rows(state: &AppState, filter: Option<&str>) -> Vec<Co
 
     list.into_iter()
         .map(|c| {
-            let name = c
-                .display_name
-                .as_ref()
-                .filter(|s| !s.is_empty())
-                .cloned()
-                .or(c.handle.clone())
-                .unwrap_or_else(|| "Unknown".to_string());
+            let name = format_contact_label(c.display_name.as_deref(), c.handle.as_deref());
 
-            let relative_date = c
-                .last_message_date
-                .map(|ts| relative_time(ts))
-                .unwrap_or_default();
+            let relative_date = c.last_message_date.map(relative_time).unwrap_or_default();
             let last_preview = c.last_message_preview.unwrap_or_default();
             ConversationRow {
                 id: c.id,
+                initial: display_initial(&name),
                 name,
                 last_preview,
                 relative_date,
@@ -123,6 +122,7 @@ pub async fn index(
 struct ConversationTemplate {
     title: String,
     conversation_id: i64,
+    contact_initial: String,
     contact_name: String,
     is_group: bool,
     primary_contact_id: Option<i64>,
@@ -136,7 +136,7 @@ struct ConversationTemplate {
     conversation_started_at: Option<String>,
     conversation_started_ago: Option<String>,
     focus_message_id: Option<i64>,
-    group_participant_stats: Vec<queries::GroupParticipantStat>,
+    group_participant_stats: Vec<GroupParticipantStatView>,
     reaction_highlights: Vec<GroupReactionHighlightView>,
     hourly_stats: Vec<HourlyStatView>,
 }
@@ -158,18 +158,10 @@ pub async fn conversation(
 
     let (contact_name, is_group, participants, has_photo) = match info {
         Ok(info) => {
-            let name = info
-                .display_name
-                .clone()
-                .filter(|s| !s.is_empty())
-                .unwrap_or_else(|| {
-                    if info.participant_names.is_empty() {
-                        "Unknown".to_string()
-                    } else {
-                        info.participant_names.join(", ")
-                    }
-                });
-            (name, info.is_group, info.participant_names, info.has_photo)
+            let name =
+                format_conversation_name(info.display_name.as_deref(), &info.participant_names);
+            let participants = super::format::format_contact_list(&info.participant_names);
+            (name, info.is_group, participants, info.has_photo)
         }
         Err(_) => ("Unknown".to_string(), false, vec![], false),
     };
@@ -199,7 +191,7 @@ pub async fn conversation(
     };
 
     let (group_participant_stats, reaction_highlights, hourly_stats) = if is_group {
-        let stats = queries::get_group_participant_stats(&conn, id).unwrap_or_default();
+        let stats = super::partials::build_group_participant_stat_views(&conn, id);
         let reaction_highlights = super::partials::build_group_reaction_highlights(&conn, id);
         (stats, reaction_highlights, vec![])
     } else {
@@ -210,6 +202,7 @@ pub async fn conversation(
     let t = ConversationTemplate {
         title: format!("Conversation with {contact_name}"),
         conversation_id: id,
+        contact_initial: display_initial(&contact_name),
         contact_name,
         is_group,
         primary_contact_id,
@@ -485,6 +478,8 @@ pub async fn contact_insights(
             handle: "Unknown".to_string(),
             has_photo: false,
         });
+    let contact_name = format_contact_value(&contact.name);
+    let contact_handle = format_contact_value(&contact.handle);
     let conversation_id = queries::get_contact_conversation_id(&conn, id).unwrap_or_default();
 
     let (
@@ -610,18 +605,13 @@ pub async fn contact_insights(
 
     let total_messages = sent_count + received_count;
     let total_starts = my_starts + their_starts;
-    let contact_initial = contact
-        .name
-        .chars()
-        .next()
-        .map(|ch| ch.to_string())
-        .unwrap_or_else(|| "?".to_string());
+    let contact_initial = display_initial(&contact_name);
     let t = ContactInsightsTemplate {
-        title: format!("{} Insights", contact.name),
+        title: format!("{contact_name} Insights"),
         contact_id: contact.id,
-        contact_name: contact.name,
+        contact_name,
         contact_initial,
-        contact_handle: contact.handle,
+        contact_handle,
         has_photo: contact.has_photo,
         has_conversation: conversation_id.is_some(),
         conversation_link: conversation_id

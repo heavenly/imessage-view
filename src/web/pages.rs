@@ -9,6 +9,7 @@ use crate::state::AppState;
 
 use super::format::{
     display_initial, format_contact_label, format_contact_value, format_conversation_name,
+    format_group_participant_summary,
 };
 use super::partials::{
     ContributionGraph, GroupParticipantStatView, GroupReactionHighlightView, HourlyStatView,
@@ -134,6 +135,7 @@ struct ConversationTemplate {
     is_group: bool,
     primary_contact_id: Option<i64>,
     participants: Vec<String>,
+    participant_summary: String,
     attachment_count: i64,
     has_photo: bool,
     contribution_graph: ContributionGraph,
@@ -184,6 +186,7 @@ pub async fn conversation(
 
     let attachment_count =
         queries::count_conversation_attachments(&conn, canonical_id).unwrap_or(0);
+    let participant_summary = format_group_participant_summary(&participants);
     let contribution_graph =
         super::partials::build_contribution_graph(&conn, canonical_id, is_group);
     let conversation_started_unix =
@@ -226,6 +229,7 @@ pub async fn conversation(
         is_group,
         primary_contact_id,
         participants,
+        participant_summary,
         attachment_count,
         has_photo,
         contribution_graph,

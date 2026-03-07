@@ -13,7 +13,7 @@
             <div class="im-chat-header-text">
                 <h2 class="im-chat-header-name">{{ contact_name }}</h2>
                 {% if is_group %}
-                <p class="im-chat-header-participants">{{ participants.join(", ") }}</p>
+                <p class="im-chat-header-participants">{{ participant_summary }}</p>
                 {% if let Some(avg) = avg_time_between %}
                 <p class="im-chat-header-status">~{{ avg }} between messages</p>
                 {% endif %}

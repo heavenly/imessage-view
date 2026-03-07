@@ -11,7 +11,7 @@ use crate::state::AppState;
 
 use super::format::{
     display_initial, format_contact_label, format_contact_list, format_contact_value,
-    format_conversation_name,
+    format_conversation_name, format_group_participant_summary,
 };
 use super::pages::ConversationRow;
 
@@ -566,6 +566,7 @@ struct ConversationPanelTemplate {
     is_group: bool,
     primary_contact_id: Option<i64>,
     participants: Vec<String>,
+    participant_summary: String,
     attachment_count: i64,
     has_photo: bool,
     contribution_graph: ContributionGraph,
@@ -601,6 +602,7 @@ pub async fn conversation_panel_partial(
     };
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
+    let participant_summary = format_group_participant_summary(&participants);
     let contribution_graph = build_contribution_graph(&conn, id, is_group);
     let conversation_started_unix =
         queries::get_conversation_first_message_unix(&conn, id).unwrap_or_default();
@@ -640,6 +642,7 @@ pub async fn conversation_panel_partial(
         is_group,
         primary_contact_id,
         participants,
+        participant_summary,
         attachment_count,
         has_photo,
         contribution_graph,

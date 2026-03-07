@@ -50,6 +50,19 @@ pub fn format_contact_list(values: &[String]) -> Vec<String> {
         .collect()
 }
 
+pub fn format_group_participant_summary(participants: &[String]) -> String {
+    match participants {
+        [] => String::new(),
+        [first] => first.clone(),
+        [first, second] => format!("{first} and {second}"),
+        [first, second, rest @ ..] => {
+            let other_count = rest.len();
+            let others = if other_count == 1 { "other" } else { "others" };
+            format!("{first}, {second}, and {other_count} {others}")
+        }
+    }
+}
+
 pub fn format_conversation_name(
     display_name: Option<&str>,
     participant_names: &[String],
@@ -110,6 +123,48 @@ mod tests {
         assert_eq!(
             format_contact_label(Some("Jane Doe"), Some("5551234567")),
             "Jane Doe"
+        );
+    }
+
+    #[test]
+    fn test_format_group_participant_summary_one_name() {
+        assert_eq!(
+            format_group_participant_summary(&["John".to_string()]),
+            "John"
+        );
+    }
+
+    #[test]
+    fn test_format_group_participant_summary_two_names() {
+        assert_eq!(
+            format_group_participant_summary(&["John".to_string(), "James".to_string()]),
+            "John and James"
+        );
+    }
+
+    #[test]
+    fn test_format_group_participant_summary_three_names() {
+        assert_eq!(
+            format_group_participant_summary(&[
+                "John".to_string(),
+                "James".to_string(),
+                "Jill".to_string()
+            ]),
+            "John, James, and 1 other"
+        );
+    }
+
+    #[test]
+    fn test_format_group_participant_summary_many_names() {
+        assert_eq!(
+            format_group_participant_summary(&[
+                "John".to_string(),
+                "James".to_string(),
+                "Jill".to_string(),
+                "Jack".to_string(),
+                "June".to_string()
+            ]),
+            "John, James, and 3 others"
         );
     }
 

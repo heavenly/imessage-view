@@ -31,6 +31,33 @@ pub fn resolve_contacts() -> HashMap<String, ContactInfo> {
         }
     }
 
+    let nickname_photos = load_imessage_nickname_photos();
+    if !nickname_photos.is_empty() {
+        eprintln!(
+            "Loaded {} iMessage profile photos from NickNameCache",
+            nickname_photos.len()
+        );
+        for (handle, photo_bytes) in nickname_photos {
+            let normalized = if handle.contains('@') {
+                normalize_email(&handle)
+            } else {
+                normalize_phone(&handle)
+            };
+            if normalized.is_empty() {
+                continue;
+            }
+            contacts
+                .entry(normalized)
+                .and_modify(|existing| {
+                    existing.photo = Some(photo_bytes.clone());
+                })
+                .or_insert(ContactInfo {
+                    display_name: String::new(),
+                    photo: Some(photo_bytes),
+                });
+        }
+    }
+
     contacts
 }
 
@@ -59,6 +86,107 @@ fn find_addressbook_dbs() -> Result<Vec<PathBuf>, std::io::Error> {
     }
 
     Ok(paths)
+}
+
+fn load_imessage_nickname_photos() -> HashMap<String, Vec<u8>> {
+    let mut result: HashMap<String, Vec<u8>> = HashMap::new();
+
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return result,
+    };
+
+    let cache_dir = PathBuf::from(&home).join("Library/Messages/NickNameCache");
+    let db_path = cache_dir.join("nicknameRecordsStore.db");
+    if !db_path.exists() {
+        return result;
+    }
+
+    let conn = match Connection::open_with_flags(&db_path, OpenFlags::SQLITE_OPEN_READ_ONLY) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!("Could not open NickNameCache DB: {e}");
+            return result;
+        }
+    };
+
+    let plist_bytes: Vec<u8> = match conn.query_row(
+        "SELECT value FROM kvtable WHERE key = 'activeNicknameRecords'",
+        [],
+        |r| r.get(0),
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            warn!("Could not read activeNicknameRecords: {e}");
+            return result;
+        }
+    };
+
+    let plist_val: plist::Value = match plist::from_bytes(&plist_bytes) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!("Could not parse NickNameCache plist: {e}");
+            return result;
+        }
+    };
+
+    let objects = match plist_val
+        .as_dictionary()
+        .and_then(|d| d.get("$objects"))
+        .and_then(|v| v.as_array())
+    {
+        Some(arr) => arr,
+        None => return result,
+    };
+
+    // Find the NSMutableDictionary containing NS.keys + NS.objects
+    for obj in objects {
+        let dict = match obj.as_dictionary() {
+            Some(d) if d.contains_key("NS.keys") && d.contains_key("NS.objects") => d,
+            _ => continue,
+        };
+
+        let keys = match dict.get("NS.keys").and_then(|v| v.as_array()) {
+            Some(k) => k,
+            None => continue,
+        };
+        let vals = match dict.get("NS.objects").and_then(|v| v.as_array()) {
+            Some(v) => v,
+            None => continue,
+        };
+
+        for (k, v) in keys.iter().zip(vals.iter()) {
+            let k_uid = match k.as_uid() {
+                Some(u) => u.get() as usize,
+                None => continue,
+            };
+            let v_uid = match v.as_uid() {
+                Some(u) => u.get() as usize,
+                None => continue,
+            };
+
+            let handle = match objects.get(k_uid).and_then(|o| o.as_string()) {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+            let avatar_id = match objects.get(v_uid).and_then(|o| o.as_string()) {
+                Some(s) => s.to_string(),
+                None => continue,
+            };
+
+            let avatar_path = cache_dir.join(format!("{avatar_id}-ad"));
+            match std::fs::read(&avatar_path) {
+                Ok(bytes) if !bytes.is_empty() => {
+                    result.insert(handle, bytes);
+                }
+                _ => {}
+            }
+        }
+
+        break;
+    }
+
+    result
 }
 
 fn load_contacts_from_db(
@@ -113,13 +241,19 @@ fn load_contacts_from_db(
                 if let Some(name) = name_map.get(&owner_id) {
                     let normalized = normalize_email(&email);
                     if !normalized.is_empty() {
-                        contacts.insert(
-                            normalized,
-                            ContactInfo {
+                        let new_photo = photo_map.get(&owner_id).cloned();
+                        contacts
+                            .entry(normalized)
+                            .and_modify(|existing| {
+                                existing.display_name = name.clone();
+                                if new_photo.is_some() {
+                                    existing.photo = new_photo.clone();
+                                }
+                            })
+                            .or_insert(ContactInfo {
                                 display_name: name.clone(),
-                                photo: photo_map.get(&owner_id).cloned(),
-                            },
-                        );
+                                photo: new_photo,
+                            });
                     }
                 }
             }
@@ -139,13 +273,19 @@ fn load_contacts_from_db(
                 if let Some(name) = name_map.get(&owner_id) {
                     let normalized = normalize_phone(&phone);
                     if !normalized.is_empty() {
-                        contacts.insert(
-                            normalized,
-                            ContactInfo {
+                        let new_photo = photo_map.get(&owner_id).cloned();
+                        contacts
+                            .entry(normalized)
+                            .and_modify(|existing| {
+                                existing.display_name = name.clone();
+                                if new_photo.is_some() {
+                                    existing.photo = new_photo.clone();
+                                }
+                            })
+                            .or_insert(ContactInfo {
                                 display_name: name.clone(),
-                                photo: photo_map.get(&owner_id).cloned(),
-                            },
-                        );
+                                photo: new_photo,
+                            });
                     }
                 }
             }

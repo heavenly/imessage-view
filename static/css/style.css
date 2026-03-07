@@ -14,6 +14,11 @@
   --im-border: #d1d1d6;
   --im-divider: rgba(0,0,0,0.1);
   --im-green: #34c759;
+  --im-divider-light: rgba(0,0,0,0.05);
+  --im-shadow: rgba(0,0,0,0.12);
+  --im-warning: #ff9500;
+  --im-error: #ff3b30;
+  color-scheme: light dark;
 }
 
 *, *::before, *::after {
@@ -112,7 +117,7 @@ body {
     padding: 10px 16px;
     text-decoration: none;
     color: inherit;
-    border-bottom: 1px solid rgba(0,0,0,0.05);
+    border-bottom: 1px solid var(--im-divider-light);
     transition: background 0.15s ease, transform 0.15s ease;
 }
 
@@ -556,7 +561,7 @@ body {
     align-items: center;
     gap: 8px;
     padding: 10px 12px;
-    background: rgba(0,0,0,0.05);
+    background: var(--im-divider-light);
     border-radius: 12px;
     text-decoration: none;
     color: inherit;
@@ -643,7 +648,7 @@ body {
 
 .attachment-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px var(--im-shadow);
 }
 
 .attachment-card.missing {
@@ -765,11 +770,11 @@ body {
 }
 
 .sync-badge.pending {
-  color: #ff9500;
+  color: var(--im-warning);
 }
 
 .sync-badge.error {
-  color: #ff3b30;
+  color: var(--im-error);
 }
 
 .missing-file {
@@ -1103,7 +1108,7 @@ body {
   border-radius: 50%;
   background: var(--im-bg-primary);
   border: 1px solid var(--im-border);
-  box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+  box-shadow: 0 2px 8px var(--im-shadow);
   color: var(--im-text-secondary);
   font-size: 18px;
   cursor: pointer;
@@ -1238,6 +1243,92 @@ body {
 
 .contribution-level-4 {
   background: var(--im-accent);
+}
+
+/* Dark mode variable overrides */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --im-bg-primary: #1c1c1e;
+    --im-bg-secondary: #2c2c2e;
+    --im-bg-tertiary: #3a3a3c;
+    --im-bubble-sent: #0a84ff;
+    --im-bubble-sent-bg: #0a84ff;
+    --im-bubble-received: #3a3a3c;
+    --im-bubble-received-bg: #3a3a3c;
+    --im-text-primary: #ffffff;
+    --im-text-secondary: #98989d;
+    --im-text-tertiary: #48484a;
+    --im-text-inverse: #ffffff;
+    --im-accent: #d96ebc;
+    --im-border: #38383a;
+    --im-divider: rgba(255,255,255,0.1);
+    --im-green: #30d158;
+    --im-divider-light: rgba(255,255,255,0.05);
+    --im-shadow: rgba(0,0,0,0.4);
+    --im-warning: #ff9f0a;
+    --im-error: #ff453a;
+  }
+}
+
+[data-theme="dark"] {
+  --im-bg-primary: #1c1c1e;
+  --im-bg-secondary: #2c2c2e;
+  --im-bg-tertiary: #3a3a3c;
+  --im-bubble-sent: #0a84ff;
+  --im-bubble-sent-bg: #0a84ff;
+  --im-bubble-received: #3a3a3c;
+  --im-bubble-received-bg: #3a3a3c;
+  --im-text-primary: #ffffff;
+  --im-text-secondary: #98989d;
+  --im-text-tertiary: #48484a;
+  --im-text-inverse: #ffffff;
+  --im-accent: #d96ebc;
+  --im-border: #38383a;
+  --im-divider: rgba(255,255,255,0.1);
+  --im-green: #30d158;
+  --im-divider-light: rgba(255,255,255,0.05);
+  --im-shadow: rgba(0,0,0,0.4);
+  --im-warning: #ff9f0a;
+  --im-error: #ff453a;
+}
+
+/* Theme toggle button */
+.im-theme-toggle {
+  position: fixed;
+  bottom: 20px;
+  left: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--im-bg-secondary);
+  border: 1px solid var(--im-border);
+  box-shadow: 0 2px 8px var(--im-shadow);
+  color: var(--im-text-secondary);
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.15s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.im-theme-toggle:hover {
+  background: var(--im-bg-tertiary);
+  color: var(--im-text-primary);
+  transform: scale(1.1);
+}
+
+.im-theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* Accessibility: respect reduced motion preference */

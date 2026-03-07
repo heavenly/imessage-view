@@ -3,7 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
     <title>{% block title %}iMessage{% endblock %}</title>
+    <script>
+    (function() {
+        var t = localStorage.getItem('theme');
+        if (t === 'dark' || t === 'light') {
+            document.documentElement.setAttribute('data-theme', t);
+        }
+    })();
+    </script>
     <link rel="stylesheet" href="/static/css/style.css">
     <script src="/static/js/htmx.min.js"></script>
 </head>
@@ -11,6 +20,35 @@
     <div class="im-app">
         {% block content %}{% endblock %}
     </div>
+    <button class="im-theme-toggle" id="theme-toggle" title="Toggle theme" onclick="cycleTheme()">
+        <svg id="theme-icon-system" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+        <svg id="theme-icon-dark" viewBox="0 0 24 24" style="display:none"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg id="theme-icon-light" viewBox="0 0 24 24" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+    <script>
+    function cycleTheme() {
+        var current = localStorage.getItem('theme') || 'system';
+        var next = current === 'system' ? 'dark' : current === 'dark' ? 'light' : 'system';
+        if (next === 'system') {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.removeItem('theme');
+        } else {
+            document.documentElement.setAttribute('data-theme', next);
+            localStorage.setItem('theme', next);
+        }
+        updateThemeIcon(next);
+    }
+
+    function updateThemeIcon(theme) {
+        document.getElementById('theme-icon-system').style.display = theme === 'system' ? '' : 'none';
+        document.getElementById('theme-icon-dark').style.display = theme === 'dark' ? '' : 'none';
+        document.getElementById('theme-icon-light').style.display = theme === 'light' ? '' : 'none';
+        var labels = { system: 'Theme: System', dark: 'Theme: Dark', light: 'Theme: Light' };
+        document.getElementById('theme-toggle').title = labels[theme] || 'Toggle theme';
+    }
+
+    updateThemeIcon(localStorage.getItem('theme') || 'system');
+    </script>
     <script>
     // Scroll preservation for infinite-scroll message pagination (sentinel swaps)
     document.body.addEventListener('htmx:beforeSwap', function(event) {

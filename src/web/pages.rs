@@ -133,6 +133,7 @@ struct ConversationTemplate {
     avg_their_response: Option<String>,
     avg_my_response: Option<String>,
     avg_time_between: Option<String>,
+    focus_message_id: Option<i64>,
 }
 
 pub async fn conversation(
@@ -188,6 +189,7 @@ pub async fn conversation(
         avg_their_response,
         avg_my_response,
         avg_time_between,
+        focus_message_id: None,
     };
     Html(t.render().unwrap_or_default())
 }

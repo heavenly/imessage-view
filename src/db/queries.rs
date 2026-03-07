@@ -280,6 +280,218 @@ pub fn get_messages(
     Ok(rows)
 }
 
+pub struct MessagesAroundResult {
+    pub messages: Vec<MessageRow>,
+    pub has_older: bool,
+    pub has_newer: bool,
+}
+
+pub fn get_messages_around(
+    conn: &Connection,
+    conversation_id: i64,
+    target_message_id: i64,
+    context: u32,
+) -> anyhow::Result<MessagesAroundResult> {
+    // Step 1: Get the target message's date_unix
+    let (target_date, target_id): (i64, i64) = conn.query_row(
+        "SELECT date_unix, id FROM messages WHERE id = ?1 AND conversation_id = ?2",
+        rusqlite::params![target_message_id, conversation_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    // Step 2: Get `context + 1` messages BEFORE the target (older), ordered DESC
+    let before_limit = context + 1;
+    let mut stmt_before = conn.prepare(
+        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+                COALESCE(ct.display_name, ct.handle) AS sender_name,
+                m.has_attachments
+         FROM messages m
+         LEFT JOIN contacts ct ON ct.id = m.sender_id
+         WHERE m.conversation_id = ?1
+           AND (m.date_unix < ?2 OR (m.date_unix = ?2 AND m.id < ?3))
+         ORDER BY m.date_unix DESC, m.id DESC
+         LIMIT ?4",
+    )?;
+    let before_rows: Vec<MessageRow> = stmt_before
+        .query_map(
+            rusqlite::params![conversation_id, target_date, target_id, before_limit],
+            |row| {
+                Ok(MessageRow {
+                    id: row.get(0)?,
+                    body: row.get(1)?,
+                    is_from_me: row.get(2)?,
+                    date_unix: row.get(3)?,
+                    service: row.get(4)?,
+                    sender_name: row.get(5)?,
+                    has_attachments: row.get(6)?,
+                })
+            },
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let has_older = before_rows.len() > context as usize;
+    let before_rows: Vec<MessageRow> = before_rows.into_iter().take(context as usize).collect();
+
+    // Step 3: Get `context + 1` messages AFTER the target (newer), ordered ASC
+    let after_limit = context + 1;
+    let mut stmt_after = conn.prepare(
+        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+                COALESCE(ct.display_name, ct.handle) AS sender_name,
+                m.has_attachments
+         FROM messages m
+         LEFT JOIN contacts ct ON ct.id = m.sender_id
+         WHERE m.conversation_id = ?1
+           AND (m.date_unix > ?2 OR (m.date_unix = ?2 AND m.id > ?3))
+         ORDER BY m.date_unix ASC, m.id ASC
+         LIMIT ?4",
+    )?;
+    let after_rows: Vec<MessageRow> = stmt_after
+        .query_map(
+            rusqlite::params![conversation_id, target_date, target_id, after_limit],
+            |row| {
+                Ok(MessageRow {
+                    id: row.get(0)?,
+                    body: row.get(1)?,
+                    is_from_me: row.get(2)?,
+                    date_unix: row.get(3)?,
+                    service: row.get(4)?,
+                    sender_name: row.get(5)?,
+                    has_attachments: row.get(6)?,
+                })
+            },
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let has_newer = after_rows.len() > context as usize;
+    let after_rows: Vec<MessageRow> = after_rows.into_iter().take(context as usize).collect();
+
+    // Step 4: Get the target message itself
+    let target_msg: MessageRow = conn.query_row(
+        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+                COALESCE(ct.display_name, ct.handle) AS sender_name,
+                m.has_attachments
+         FROM messages m
+         LEFT JOIN contacts ct ON ct.id = m.sender_id
+         WHERE m.id = ?1",
+        [target_message_id],
+        |row| {
+            Ok(MessageRow {
+                id: row.get(0)?,
+                body: row.get(1)?,
+                is_from_me: row.get(2)?,
+                date_unix: row.get(3)?,
+                service: row.get(4)?,
+                sender_name: row.get(5)?,
+                has_attachments: row.get(6)?,
+            })
+        },
+    )?;
+
+    // Step 5: Combine: before (reversed to chronological) + target + after
+    let mut messages = Vec::with_capacity(before_rows.len() + 1 + after_rows.len());
+    for m in before_rows.into_iter().rev() {
+        messages.push(m);
+    }
+    messages.push(target_msg);
+    for m in after_rows {
+        messages.push(m);
+    }
+
+    Ok(MessagesAroundResult {
+        messages,
+        has_older,
+        has_newer,
+    })
+}
+
+pub fn get_messages_before(
+    conn: &Connection,
+    conversation_id: i64,
+    before_id: i64,
+    limit: u32,
+) -> anyhow::Result<Vec<MessageRow>> {
+    let (anchor_date, anchor_id): (i64, i64) = conn.query_row(
+        "SELECT date_unix, id FROM messages WHERE id = ?1 AND conversation_id = ?2",
+        rusqlite::params![before_id, conversation_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+                COALESCE(ct.display_name, ct.handle) AS sender_name,
+                m.has_attachments
+         FROM messages m
+         LEFT JOIN contacts ct ON ct.id = m.sender_id
+         WHERE m.conversation_id = ?1
+           AND (m.date_unix < ?2 OR (m.date_unix = ?2 AND m.id < ?3))
+         ORDER BY m.date_unix DESC, m.id DESC
+         LIMIT ?4",
+    )?;
+
+    let rows: Vec<MessageRow> = stmt
+        .query_map(
+            rusqlite::params![conversation_id, anchor_date, anchor_id, limit],
+            |row| {
+                Ok(MessageRow {
+                    id: row.get(0)?,
+                    body: row.get(1)?,
+                    is_from_me: row.get(2)?,
+                    date_unix: row.get(3)?,
+                    service: row.get(4)?,
+                    sender_name: row.get(5)?,
+                    has_attachments: row.get(6)?,
+                })
+            },
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
+pub fn get_messages_after(
+    conn: &Connection,
+    conversation_id: i64,
+    after_id: i64,
+    limit: u32,
+) -> anyhow::Result<Vec<MessageRow>> {
+    let (anchor_date, anchor_id): (i64, i64) = conn.query_row(
+        "SELECT date_unix, id FROM messages WHERE id = ?1 AND conversation_id = ?2",
+        rusqlite::params![after_id, conversation_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+                COALESCE(ct.display_name, ct.handle) AS sender_name,
+                m.has_attachments
+         FROM messages m
+         LEFT JOIN contacts ct ON ct.id = m.sender_id
+         WHERE m.conversation_id = ?1
+           AND (m.date_unix > ?2 OR (m.date_unix = ?2 AND m.id > ?3))
+         ORDER BY m.date_unix ASC, m.id ASC
+         LIMIT ?4",
+    )?;
+
+    let rows: Vec<MessageRow> = stmt
+        .query_map(
+            rusqlite::params![conversation_id, anchor_date, anchor_id, limit],
+            |row| {
+                Ok(MessageRow {
+                    id: row.get(0)?,
+                    body: row.get(1)?,
+                    is_from_me: row.get(2)?,
+                    date_unix: row.get(3)?,
+                    service: row.get(4)?,
+                    sender_name: row.get(5)?,
+                    has_attachments: row.get(6)?,
+                })
+            },
+        )?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
 pub fn get_message_attachments(
     conn: &Connection,
     message_ids: &[i64],

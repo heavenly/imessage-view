@@ -1,5 +1,5 @@
 {% if is_empty %}
-{% if page == 0 %}
+{% if page == 0 && focus_id.is_none() %}
 <div class="im-empty-chat">
     <div class="im-empty-chat-icon">💬</div>
     <p>No messages yet.</p>
@@ -8,13 +8,25 @@
 {% else %}
 
 {% if has_more %}
-<div id="sentinel-{{ page }}"
-     hx-get="/partials/messages?conversation_id={{ conversation_id }}&page={{ page + 1 }}"
+{% if focus_id.is_some() %}
+{% if let Some(fid) = first_message_id %}
+<div id="sentinel-before-{{ fid }}"
+     hx-get="/partials/messages?conversation_id={{ conversation_id }}&amp;before={{ fid }}"
      hx-trigger="intersect root:.im-chat-content threshold:0"
      hx-swap="outerHTML"
      class="im-loading-sentinel">
     <span class="im-spinner"></span>
 </div>
+{% endif %}
+{% else %}
+<div id="sentinel-{{ page }}"
+     hx-get="/partials/messages?conversation_id={{ conversation_id }}&amp;page={{ page + 1 }}"
+     hx-trigger="intersect root:.im-chat-content threshold:0"
+     hx-swap="outerHTML"
+     class="im-loading-sentinel">
+    <span class="im-spinner"></span>
+</div>
+{% endif %}
 {% endif %}
 
 {% for group in groups %}
@@ -31,7 +43,7 @@
             {% endif %}
         {% endif %}
         {% for msg in group.messages %}
-        <div class="im-message" id="msg-{{ msg.id }}">
+        <div class="im-message{% if let Some(fid) = focus_id %}{% if *fid == msg.id %} im-message--focused{% endif %}{% endif %}" id="msg-{{ msg.id }}">
             <div class="im-message-bubble">
                 {% if let Some(body) = msg.body %}
                 <p class="im-message-text">{{ body }}</p>
@@ -69,5 +81,17 @@
         {% endfor %}
     </div>
 {% endfor %}
+
+{% if has_newer %}
+{% if let Some(lid) = last_message_id %}
+<div id="sentinel-after-{{ lid }}"
+     hx-get="/partials/messages?conversation_id={{ conversation_id }}&amp;after={{ lid }}"
+     hx-trigger="intersect root:.im-chat-content threshold:0"
+     hx-swap="outerHTML"
+     class="im-loading-sentinel">
+    <span class="im-spinner"></span>
+</div>
+{% endif %}
+{% endif %}
 
 {% endif %}

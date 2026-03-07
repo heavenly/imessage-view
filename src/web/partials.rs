@@ -13,6 +13,7 @@ use super::pages::ConversationRow;
 #[derive(Deserialize)]
 pub struct ConversationPanelQuery {
     pub id: i64,
+    pub focus: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -119,6 +120,7 @@ struct ConversationPanelTemplate {
     avg_their_response: Option<String>,
     avg_my_response: Option<String>,
     avg_time_between: Option<String>,
+    focus_message_id: Option<i64>,
 }
 
 pub async fn conversation_panel_partial(
@@ -174,6 +176,7 @@ pub async fn conversation_panel_partial(
         avg_their_response,
         avg_my_response,
         avg_time_between,
+        focus_message_id: params.focus,
     };
     Html(t.render().unwrap_or_default())
 }
@@ -182,6 +185,9 @@ pub async fn conversation_panel_partial(
 pub struct MessagesQuery {
     pub conversation_id: Option<i64>,
     pub page: Option<u32>,
+    pub focus: Option<i64>,
+    pub before: Option<i64>,
+    pub after: Option<i64>,
 }
 
 struct MessageView {
@@ -218,6 +224,10 @@ struct MessagesPartialTemplate {
     has_more: bool,
     is_empty: bool,
     is_group: bool,
+    focus_id: Option<i64>,
+    has_newer: bool,
+    first_message_id: Option<i64>,
+    last_message_id: Option<i64>,
 }
 
 const MESSAGES_PER_PAGE: u32 = 50;
@@ -227,7 +237,6 @@ pub async fn messages_partial(
     Query(params): Query<MessagesQuery>,
 ) -> impl IntoResponse {
     let conversation_id = params.conversation_id.unwrap_or(0);
-    let page = params.page.unwrap_or(0);
 
     let conn = state.db.lock().unwrap();
     let is_group: bool = conn
@@ -237,16 +246,45 @@ pub async fn messages_partial(
             |r| r.get(0),
         )
         .unwrap_or(false);
-    let rows = queries::get_messages(&conn, conversation_id, page, MESSAGES_PER_PAGE + 1)
-        .unwrap_or_default();
 
-    let has_more = rows.len() > MESSAGES_PER_PAGE as usize;
-    let rows: Vec<_> = rows.into_iter().take(MESSAGES_PER_PAGE as usize).collect();
+    // Determine which mode we're in
+    let (raw_messages, has_more, has_newer, page, focus_id) = if let Some(focus) = params.focus {
+        // Focus mode: load messages around the target
+        let result = queries::get_messages_around(&conn, conversation_id, focus, 25)
+            .unwrap_or_else(|_| queries::MessagesAroundResult {
+                messages: Vec::new(),
+                has_older: false,
+                has_newer: false,
+            });
+        (result.messages, result.has_older, result.has_newer, 0u32, Some(focus))
+    } else if let Some(before_id) = params.before {
+        // Before mode: cursor-based load older
+        let rows = queries::get_messages_before(&conn, conversation_id, before_id, MESSAGES_PER_PAGE + 1)
+            .unwrap_or_default();
+        let has_more = rows.len() > MESSAGES_PER_PAGE as usize;
+        let rows: Vec<_> = rows.into_iter().take(MESSAGES_PER_PAGE as usize).collect();
+        (rows, has_more, false, 0u32, None)
+    } else if let Some(after_id) = params.after {
+        // After mode: cursor-based load newer
+        let rows = queries::get_messages_after(&conn, conversation_id, after_id, MESSAGES_PER_PAGE + 1)
+            .unwrap_or_default();
+        let has_newer = rows.len() > MESSAGES_PER_PAGE as usize;
+        let rows: Vec<_> = rows.into_iter().take(MESSAGES_PER_PAGE as usize).collect();
+        (rows, false, has_newer, 0u32, None)
+    } else {
+        // Default page mode
+        let page = params.page.unwrap_or(0);
+        let rows = queries::get_messages(&conn, conversation_id, page, MESSAGES_PER_PAGE + 1)
+            .unwrap_or_default();
+        let has_more = rows.len() > MESSAGES_PER_PAGE as usize;
+        let rows: Vec<_> = rows.into_iter().take(MESSAGES_PER_PAGE as usize).collect();
+        (rows, has_more, false, page, None)
+    };
 
-    let message_ids: Vec<i64> = rows.iter().filter(|m| m.has_attachments).map(|m| m.id).collect();
+    let message_ids: Vec<i64> = raw_messages.iter().filter(|m| m.has_attachments).map(|m| m.id).collect();
     let mut att_map = queries::get_message_attachments(&conn, &message_ids).unwrap_or_default();
 
-    let mut messages: Vec<MessageView> = rows
+    let mut messages: Vec<MessageView> = raw_messages
         .into_iter()
         .map(|m| {
             let dt = DateTime::from_timestamp(m.date_unix, 0);
@@ -281,8 +319,13 @@ pub async fn messages_partial(
         })
         .collect();
 
-    // Reverse: query is DESC (newest first), reverse to put oldest at top, newest at bottom
-    messages.reverse();
+    // For default page mode and before mode, reverse to chronological (query is DESC)
+    if params.focus.is_none() && params.after.is_none() {
+        messages.reverse();
+    }
+
+    let first_message_id = messages.first().map(|m| m.id);
+    let last_message_id = messages.last().map(|m| m.id);
 
     // Group consecutive messages by sender and date
     let is_empty = messages.is_empty();
@@ -325,6 +368,10 @@ pub async fn messages_partial(
         has_more,
         is_empty,
         is_group,
+        focus_id,
+        has_newer,
+        first_message_id,
+        last_message_id,
     };
     Html(t.render().unwrap_or_default())
 }
@@ -480,6 +527,7 @@ struct UnifiedConversationHit {
 }
 
 struct UnifiedMessageHit {
+    id: i64,
     sender_label: String,
     conversation_id: i64,
     conversation_label: String,
@@ -568,6 +616,7 @@ pub async fn unified_search_partial(
                 .unwrap_or_else(|| format!("Conversation {}", r.conversation_id));
             let snippet = r.highlighted_body.or(r.body).unwrap_or_default();
             UnifiedMessageHit {
+                id: r.id,
                 sender_label,
                 conversation_id: r.conversation_id,
                 conversation_label,

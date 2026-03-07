@@ -75,7 +75,12 @@
                 delete container._prevScrollTop;
             }
         } else if (event.detail.target && event.detail.target.id === 'tab-content') {
-            event.detail.target.scrollTop = event.detail.target.scrollHeight;
+            var focused = document.querySelector('.im-message--focused');
+            if (focused) {
+                focused.scrollIntoView({ block: 'center', behavior: 'instant' });
+            } else {
+                event.detail.target.scrollTop = event.detail.target.scrollHeight;
+            }
         }
     });
 

@@ -31,7 +31,7 @@
     
     <div class="im-tab-bar">
         <button class="im-tab active" 
-                hx-get="/partials/messages?conversation_id={{ conversation_id }}"
+                hx-get="/partials/messages?conversation_id={{ conversation_id }}{% if let Some(fid) = focus_message_id %}&amp;focus={{ fid }}{% endif %}"
                 hx-target="#tab-content"
                 hx-swap="innerHTML"
                 hx-trigger="load, click"

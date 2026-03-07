@@ -1,6 +1,6 @@
 {% for r in messages %}
 <a href="/conversations/{{ r.conversation_id }}" class="im-search-message-hit"
-   hx-get="/partials/conversation-panel?id={{ r.conversation_id }}"
+   hx-get="/partials/conversation-panel?id={{ r.conversation_id }}&amp;focus={{ r.id }}"
    hx-target="#main-content"
    hx-swap="outerHTML"
    hx-push-url="/conversations/{{ r.conversation_id }}">

@@ -1573,6 +1573,17 @@ body {
     scrollbar-color: var(--im-text-tertiary) transparent;
 }
 
+/* Focused message highlight (jump-to-message from search) */
+.im-message--focused .im-message-bubble {
+    box-shadow: 0 0 0 2px var(--im-accent);
+    animation: focusPulse 2s ease-out;
+}
+
+@keyframes focusPulse {
+    0%   { box-shadow: 0 0 0 4px var(--im-accent); }
+    100% { box-shadow: 0 0 0 2px var(--im-accent); }
+}
+
 /* Accessibility: respect reduced motion preference */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

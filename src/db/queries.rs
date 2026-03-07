@@ -127,6 +127,20 @@ pub fn get_conversation_info(
     })
 }
 
+pub fn get_conversation_first_message_unix(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Option<i64>> {
+    Ok(conn.query_row(
+        "SELECT MIN(date_unix)
+         FROM messages
+         WHERE conversation_id = ?1
+            AND is_reaction = 0",
+        [conversation_id],
+        |row| row.get(0),
+    )?)
+}
+
 pub fn get_primary_contact_id_for_conversation(
     conn: &Connection,
     conversation_id: i64,

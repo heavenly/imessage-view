@@ -1251,7 +1251,7 @@ body {
 
 /* Contact Info Modal */
 .im-contact-modal {
-    width: 320px;
+    width: 360px;
     max-width: 90vw;
     position: relative;
     padding: 2rem 1.5rem;
@@ -1304,6 +1304,57 @@ body {
     flex-direction: column;
     align-items: center;
     gap: 2px;
+}
+
+.im-contact-modal-section {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.55rem;
+    padding: 0.9rem 1rem;
+    border-radius: 16px;
+    border: 1px solid var(--im-border);
+    background: linear-gradient(180deg, var(--im-bg-secondary) 0%, var(--im-bg-primary) 100%);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+}
+
+.im-contact-modal-section-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.im-contact-modal-section-label {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--im-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.im-contact-modal-section-value {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--im-text-primary);
+    text-align: left;
+}
+
+.im-contact-modal-section-chip {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 28px;
+    padding: 0.35rem 0.65rem;
+    border-radius: 999px;
+    background: var(--im-bg-tertiary);
+    color: var(--im-text-secondary);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.2;
+    text-align: center;
 }
 
 .im-stat-value {

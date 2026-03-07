@@ -196,6 +196,17 @@
                     {% endfor %}
                 </div>
             </div>
+            {% if let Some(started_at) = conversation_started_at %}
+            <div class="im-contact-modal-section">
+                <div class="im-contact-modal-section-header">
+                    <p class="im-contact-modal-section-label">Chat started</p>
+                    {% if let Some(started_ago) = conversation_started_ago %}
+                    <span class="im-contact-modal-section-chip">{{ started_ago }}</span>
+                    {% endif %}
+                </div>
+                <p class="im-contact-modal-section-value">{{ started_at }}</p>
+            </div>
+            {% endif %}
             {% if is_group %}
             {% if let Some(avg) = avg_time_between %}
             <div class="im-contact-modal-stats">

@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse};
-use chrono::DateTime;
+use chrono::{DateTime, Datelike, Local, NaiveDate};
 use serde::Deserialize;
 use std::collections::HashMap;
 
@@ -48,6 +48,63 @@ pub fn format_duration(seconds: f64) -> String {
             format!("{}d {}h", d, h)
         }
     }
+}
+
+pub fn format_conversation_start(unix: i64) -> Option<String> {
+    DateTime::from_timestamp(unix, 0)
+        .map(|dt| dt.with_timezone(&Local).format("%b %-d, %Y").to_string())
+}
+
+fn calendar_elapsed_since(start_date: NaiveDate, end_date: NaiveDate) -> String {
+    if start_date >= end_date {
+        return "today".to_string();
+    }
+
+    let mut years = end_date.year() - start_date.year();
+    let mut months = end_date.month() as i32 - start_date.month() as i32;
+    let mut days = end_date.day() as i32 - start_date.day() as i32;
+
+    if days < 0 {
+        months -= 1;
+        let first_of_month = end_date.with_day(1).unwrap_or(end_date);
+        let days_in_previous_month = first_of_month
+            .pred_opt()
+            .map(|date| date.day() as i32)
+            .unwrap_or(30);
+        days += days_in_previous_month;
+    }
+
+    if months < 0 {
+        years -= 1;
+        months += 12;
+    }
+
+    let mut parts = Vec::new();
+    if years > 0 {
+        parts.push(format!(
+            "{years} {}",
+            if years == 1 { "year" } else { "years" }
+        ));
+    }
+    if months > 0 {
+        parts.push(format!(
+            "{months} {}",
+            if months == 1 { "month" } else { "months" }
+        ));
+    }
+    if days > 0 || parts.is_empty() {
+        parts.push(format!("{days} {}", if days == 1 { "day" } else { "days" }));
+    }
+
+    format!("{} ago", parts.join(", "))
+}
+
+pub fn format_conversation_start_elapsed(unix: i64) -> Option<String> {
+    DateTime::from_timestamp(unix, 0).map(|dt| {
+        let start_date = dt.with_timezone(&Local).date_naive();
+        let today = Local::now().date_naive();
+        calendar_elapsed_since(start_date, today)
+    })
 }
 
 pub fn build_contribution_graph(
@@ -414,6 +471,8 @@ struct ConversationPanelTemplate {
     avg_their_response: Option<String>,
     avg_my_response: Option<String>,
     avg_time_between: Option<String>,
+    conversation_started_at: Option<String>,
+    conversation_started_ago: Option<String>,
     focus_message_id: Option<i64>,
     group_participant_stats: Vec<queries::GroupParticipantStat>,
     reaction_highlights: Vec<GroupReactionHighlightView>,
@@ -450,6 +509,8 @@ pub async fn conversation_panel_partial(
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
     let contribution_days = build_contribution_graph(&conn, id, is_group);
+    let conversation_started_unix =
+        queries::get_conversation_first_message_unix(&conn, id).unwrap_or_default();
 
     let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
         let avg = queries::get_avg_time_between_messages(&conn, id)
@@ -491,6 +552,9 @@ pub async fn conversation_panel_partial(
         avg_their_response,
         avg_my_response,
         avg_time_between,
+        conversation_started_at: conversation_started_unix.and_then(format_conversation_start),
+        conversation_started_ago: conversation_started_unix
+            .and_then(format_conversation_start_elapsed),
         focus_message_id: params.focus,
         group_participant_stats,
         reaction_highlights,

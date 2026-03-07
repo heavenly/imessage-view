@@ -133,6 +133,8 @@ struct ConversationTemplate {
     avg_their_response: Option<String>,
     avg_my_response: Option<String>,
     avg_time_between: Option<String>,
+    conversation_started_at: Option<String>,
+    conversation_started_ago: Option<String>,
     focus_message_id: Option<i64>,
     group_participant_stats: Vec<queries::GroupParticipantStat>,
     reaction_highlights: Vec<GroupReactionHighlightView>,
@@ -174,6 +176,8 @@ pub async fn conversation(
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
     let contribution_days = super::partials::build_contribution_graph(&conn, id, is_group);
+    let conversation_started_unix =
+        queries::get_conversation_first_message_unix(&conn, id).unwrap_or_default();
 
     let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
         let avg = queries::get_avg_time_between_messages(&conn, id)
@@ -216,6 +220,10 @@ pub async fn conversation(
         avg_their_response,
         avg_my_response,
         avg_time_between,
+        conversation_started_at: conversation_started_unix
+            .and_then(super::partials::format_conversation_start),
+        conversation_started_ago: conversation_started_unix
+            .and_then(super::partials::format_conversation_start_elapsed),
         focus_message_id: params.focus,
         group_participant_stats,
         reaction_highlights,

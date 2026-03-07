@@ -25,5 +25,6 @@ pub fn router() -> Router<AppState> {
         .route("/partials/search-results", get(partials::search_results_partial))
         .route("/partials/conversation-attachments", get(partials::conversation_attachments_partial))
         .route("/partials/conversation-panel", get(partials::conversation_panel_partial))
+        .route("/partials/unified-search", get(partials::unified_search_partial))
         .nest_service("/static", ServeDir::new("static"))
 }

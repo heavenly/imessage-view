@@ -466,6 +466,143 @@ struct ConversationAttachmentsPartialTemplate {
 
 const ATTACHMENTS_PER_PAGE: u32 = 50;
 
+#[derive(Deserialize)]
+pub struct UnifiedSearchQuery {
+    pub q: Option<String>,
+    pub page: Option<u32>,
+}
+
+struct UnifiedConversationHit {
+    id: i64,
+    name: String,
+    is_group: bool,
+    has_photo: bool,
+}
+
+struct UnifiedMessageHit {
+    sender_label: String,
+    conversation_id: i64,
+    conversation_label: String,
+    date_formatted: String,
+    snippet: String,
+}
+
+#[derive(Template)]
+#[template(path = "partials/unified_search.html")]
+struct UnifiedSearchTemplate {
+    query: String,
+    conversations: Vec<UnifiedConversationHit>,
+    messages: Vec<UnifiedMessageHit>,
+    total_message_count: usize,
+    has_more: bool,
+    next_page: u32,
+}
+
+#[derive(Template)]
+#[template(path = "partials/unified_search_more.html")]
+struct UnifiedSearchMoreTemplate {
+    query: String,
+    messages: Vec<UnifiedMessageHit>,
+    has_more: bool,
+    next_page: u32,
+}
+
+const UNIFIED_SEARCH_PAGE_SIZE: usize = 20;
+
+pub async fn unified_search_partial(
+    State(state): State<AppState>,
+    Query(params): Query<UnifiedSearchQuery>,
+) -> impl IntoResponse {
+    let query = params.q.unwrap_or_default();
+    let page = params.page.unwrap_or(0);
+
+    if query.trim().is_empty() {
+        let conversations = super::pages::build_conversation_rows(&state, None);
+        let t = ConversationsPartialTemplate { conversations };
+        return Html(t.render().unwrap_or_default());
+    }
+
+    let conn = state.db.lock().unwrap();
+
+    let conversation_hits: Vec<UnifiedConversationHit> = if page == 0 {
+        let list = queries::conversation_list(&conn, Some(query.trim())).unwrap_or_default();
+        list.into_iter()
+            .take(20)
+            .map(|c| {
+                let name = c
+                    .display_name
+                    .as_ref()
+                    .filter(|s| !s.is_empty())
+                    .cloned()
+                    .or(c.handle.clone())
+                    .unwrap_or_else(|| "Unknown".to_string());
+                UnifiedConversationHit {
+                    id: c.id,
+                    name,
+                    is_group: c.is_group,
+                    has_photo: c.has_photo,
+                }
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
+    let offset = page as usize * UNIFIED_SEARCH_PAGE_SIZE;
+    let results =
+        search::search(&conn, &query, UNIFIED_SEARCH_PAGE_SIZE, offset).unwrap_or_default();
+    let total_message_count = search::search_count(&conn, &query).unwrap_or(0);
+
+    let messages: Vec<UnifiedMessageHit> = results
+        .into_iter()
+        .map(|r| {
+            let sender_label = if r.is_from_me {
+                "Me".to_string()
+            } else {
+                r.sender_name
+                    .or(r.sender_handle)
+                    .unwrap_or_else(|| "Unknown".to_string())
+            };
+            let conversation_label = r
+                .conversation_name
+                .unwrap_or_else(|| format!("Conversation {}", r.conversation_id));
+            let snippet = r.highlighted_body.or(r.body).unwrap_or_default();
+            UnifiedMessageHit {
+                sender_label,
+                conversation_id: r.conversation_id,
+                conversation_label,
+                date_formatted: DateTime::from_timestamp(r.date_unix, 0)
+                    .map(|dt| dt.format("%b %d, %Y").to_string())
+                    .unwrap_or_else(|| "Unknown date".to_string()),
+                snippet,
+            }
+        })
+        .collect();
+
+    let fetched = offset + messages.len();
+    let has_more = fetched < total_message_count;
+
+    if page > 0 {
+        let t = UnifiedSearchMoreTemplate {
+            query,
+            messages,
+            has_more,
+            next_page: page + 1,
+        };
+        return Html(t.render().unwrap_or_default());
+    }
+
+    let t = UnifiedSearchTemplate {
+        query,
+        conversations: conversation_hits,
+        messages,
+        total_message_count,
+        has_more,
+        next_page: page + 1,
+    };
+    Html(t.render().unwrap_or_default())
+}
+
 pub async fn conversation_attachments_partial(
     State(state): State<AppState>,
     Query(params): Query<ConversationAttachmentsQuery>,

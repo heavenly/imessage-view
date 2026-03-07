@@ -5,11 +5,11 @@
     <div class="im-sidebar-header">
         <h1>iMessage</h1>
         <input type="search"
-               name="filter"
+               name="q"
                class="im-search"
                placeholder="Search"
                value="{{ filter }}"
-               hx-get="/"
+               hx-get="/partials/unified-search"
                hx-trigger="input changed delay:300ms, search"
                hx-target="#conversations-list"
                hx-swap="innerHTML"

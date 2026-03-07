@@ -1,0 +1,61 @@
+{% if !conversations.is_empty() %}
+<div class="im-search-section">
+    <div class="im-search-section-label">Conversations</div>
+    <div class="im-search-conversations-row">
+        {% for c in conversations %}
+        <a href="/conversations/{{ c.id }}" class="im-search-conversation-chip"
+           hx-get="/partials/conversation-panel?id={{ c.id }}"
+           hx-target="#main-content"
+           hx-swap="outerHTML"
+           hx-push-url="/conversations/{{ c.id }}">
+            <div class="im-avatar{% if c.is_group %} im-avatar--group{% endif %}" style="width: 48px; height: 48px; font-size: 18px;">
+                {% if c.has_photo %}
+                <img src="/conversations/{{ c.id }}/photo" alt="" loading="lazy" onload="this.classList.add('loaded')">
+                {% else %}
+                <span class="im-avatar-initial">{% if c.is_group %}👥{% else %}{{ c.name.chars().next().unwrap_or('?') }}{% endif %}</span>
+                {% endif %}
+            </div>
+            <span class="im-search-chip-name">{{ c.name }}</span>
+        </a>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+{% if !messages.is_empty() %}
+<div class="im-search-section">
+    <div class="im-search-section-label">Messages ({{ total_message_count }})</div>
+    <div class="im-search-messages-list" id="unified-message-results">
+        {% for r in messages %}
+        <a href="/conversations/{{ r.conversation_id }}" class="im-search-message-hit"
+           hx-get="/partials/conversation-panel?id={{ r.conversation_id }}"
+           hx-target="#main-content"
+           hx-swap="outerHTML"
+           hx-push-url="/conversations/{{ r.conversation_id }}">
+            <div class="im-search-hit-top">
+                <span class="im-search-hit-sender">{{ r.sender_label }}</span>
+                <span class="im-search-hit-to">to</span>
+                <span class="im-search-hit-conversation">{{ r.conversation_label }}</span>
+                <span class="im-search-hit-date">{{ r.date_formatted }}</span>
+            </div>
+            <p class="im-search-hit-snippet">{{ r.snippet|safe }}</p>
+        </a>
+        {% endfor %}
+    </div>
+    {% if has_more %}
+    <div class="im-search-load-more" id="unified-load-more">
+        <button class="im-search-load-more-btn"
+                hx-get="/partials/unified-search?q={{ query|urlencode }}&amp;page={{ next_page }}"
+                hx-target="#unified-message-results"
+                hx-swap="beforeend"
+                hx-indicator=".im-search-load-more-btn">
+            Load More Messages
+        </button>
+    </div>
+    {% endif %}
+</div>
+{% endif %}
+{% if conversations.is_empty() && messages.is_empty() %}
+<div class="im-empty-list">
+    <p>No results for &ldquo;{{ query }}&rdquo;</p>
+</div>
+{% endif %}

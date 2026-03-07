@@ -7,10 +7,10 @@
             <h1>iMessage</h1>
         </div>
         <input type="search"
-               name="filter"
+               name="q"
                class="im-search"
                placeholder="Search"
-               hx-get="/"
+               hx-get="/partials/unified-search"
                hx-trigger="input changed delay:300ms, search"
                hx-target="#conversations-list"
                hx-swap="innerHTML"

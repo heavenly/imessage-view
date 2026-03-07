@@ -39,6 +39,7 @@ pub async fn conversation_panel_partial(
             let name = info
                 .display_name
                 .clone()
+                .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| {
                     if info.participant_names.is_empty() {
                         "Unknown".to_string()
@@ -103,6 +104,7 @@ struct MessagesPartialTemplate {
     page: u32,
     has_more: bool,
     is_empty: bool,
+    is_group: bool,
 }
 
 const MESSAGES_PER_PAGE: u32 = 50;
@@ -115,6 +117,13 @@ pub async fn messages_partial(
     let page = params.page.unwrap_or(0);
 
     let conn = state.db.lock().unwrap();
+    let is_group: bool = conn
+        .query_row(
+            "SELECT is_group FROM conversations WHERE id = ?1",
+            [conversation_id],
+            |r| r.get(0),
+        )
+        .unwrap_or(false);
     let rows = queries::get_messages(&conn, conversation_id, page, MESSAGES_PER_PAGE + 1)
         .unwrap_or_default();
 
@@ -202,6 +211,7 @@ pub async fn messages_partial(
         page,
         has_more,
         is_empty,
+        is_group,
     };
     Html(t.render().unwrap_or_default())
 }

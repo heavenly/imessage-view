@@ -28,7 +28,7 @@
         {% for msg in group.messages %}
         <div class="im-message" id="msg-{{ msg.id }}">
             <div class="im-message-bubble">
-                {% if !group.is_from_me %}
+                {% if !group.is_from_me && is_group %}
                     {% if let Some(name) = msg.sender_name %}
                         {% if loop.first %}
                         <span class="im-sender-name">{{ name }}</span>

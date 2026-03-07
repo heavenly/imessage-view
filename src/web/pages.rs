@@ -142,6 +142,7 @@ pub async fn conversation(
             let name = info
                 .display_name
                 .clone()
+                .filter(|s| !s.is_empty())
                 .unwrap_or_else(|| {
                     if info.participant_names.is_empty() {
                         "Unknown".to_string()

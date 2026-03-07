@@ -1,6 +1,6 @@
 <div class="im-main im-chat-container" id="main-content">
     <header class="im-chat-header">
-        <div class="im-chat-header-info">
+        <button class="im-chat-header-info{% if !is_group %} im-chat-header-info--solo{% endif %}" onclick="document.getElementById('contact-info-modal').classList.add('active')">
             <div class="im-avatar{% if is_group %} im-avatar--group{% endif %}">
                 {% if has_photo %}
                 <img src="/conversations/{{ conversation_id }}/photo" alt="" onload="this.classList.add('loaded')">
@@ -16,9 +16,9 @@
                 <p class="im-chat-header-status"></p>
                 {% endif %}
             </div>
-        </div>
+        </button>
         <div class="im-chat-header-actions">
-            <button class="im-header-btn" title="Info">ℹ️</button>
+            <button class="im-header-btn" title="Info" onclick="document.getElementById('contact-info-modal').classList.add('active')">ℹ️</button>
         </div>
     </header>
     
@@ -48,6 +48,26 @@
         </div>
     </div>
     <button id="scroll-to-bottom" class="im-scroll-bottom" aria-label="Scroll to bottom">&darr;</button>
+</div>
+
+<div id="contact-info-modal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('active')">
+    <div class="modal-content im-contact-modal">
+        <button class="modal-close" onclick="document.getElementById('contact-info-modal').classList.remove('active')">&times;</button>
+        <div class="im-contact-modal-body">
+            <div class="im-avatar im-contact-modal-avatar{% if is_group %} im-avatar--group{% endif %}">
+                {% if has_photo %}
+                <img src="/conversations/{{ conversation_id }}/photo" alt="" onload="this.classList.add('loaded')">
+                {% else %}
+                <span class="im-avatar-initial">{% if is_group %}👥{% else %}{{ contact_name.chars().next().unwrap_or('?') }}{% endif %}</span>
+                {% endif %}
+            </div>
+            <h2 class="im-contact-modal-name">{{ contact_name }}</h2>
+            {% if is_group %}
+            <p class="im-contact-modal-detail">{{ participants.len() }} participants</p>
+            <p class="im-contact-modal-participants">{{ participants.join(", ") }}</p>
+            {% endif %}
+        </div>
+    </div>
 </div>
 
 <script>

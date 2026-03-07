@@ -94,7 +94,7 @@
                         {% if !msg.reactions.is_empty() %}
                         <div class="im-message-reactions" aria-label="Reactions">
                             {% for reaction in msg.reactions %}
-                            <span class="im-message-reaction" title="{{ reaction.title }}">{{ reaction.glyph }}</span>
+                            <span class="im-message-reaction{% if reaction.is_textual %} im-message-reaction--text{% endif %}{% if reaction.is_haha %} im-message-reaction--haha{% endif %}" title="{{ reaction.title }}">{{ reaction.glyph }}</span>
                             {% endfor %}
                         </div>
                         {% endif %}

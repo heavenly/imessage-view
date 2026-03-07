@@ -280,6 +280,8 @@ struct AttachmentView {
 struct ReactionView {
     glyph: String,
     title: String,
+    is_textual: bool,
+    is_haha: bool,
 }
 
 fn escape_html(input: &str) -> String {
@@ -352,16 +354,17 @@ fn linkify_text(input: &str) -> String {
 }
 
 fn reaction_view(reaction: &queries::MessageReaction) -> Option<ReactionView> {
-    let (glyph, title) = match reaction.reaction_type {
-        2000 => ("❤", "Loved"),
-        2001 => ("👍", "Liked"),
-        2002 => ("👎", "Disliked"),
-        2003 => ("ha", "Laughed"),
-        2004 => ("!!", "Emphasized"),
-        2005 => ("?", "Questioned"),
+    let (glyph, title, is_textual) = match reaction.reaction_type {
+        2000 => ("❤️", "Loved", false),
+        2001 => ("👍", "Liked", false),
+        2002 => ("👎", "Disliked", false),
+        2003 => ("HaHa", "Laughed", true),
+        2004 => ("‼", "Emphasized", false),
+        2005 => ("?", "Questioned", true),
         2006 => (
             reaction.reaction_emoji.as_deref().unwrap_or("🙂"),
             "Reacted",
+            false,
         ),
         _ => return None,
     };
@@ -369,6 +372,8 @@ fn reaction_view(reaction: &queries::MessageReaction) -> Option<ReactionView> {
     Some(ReactionView {
         glyph: glyph.to_string(),
         title: title.to_string(),
+        is_textual,
+        is_haha: reaction.reaction_type == 2003,
     })
 }
 

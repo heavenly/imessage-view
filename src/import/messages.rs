@@ -28,6 +28,8 @@ struct MessageRow {
     service: Option<String>,
     is_reaction: bool,
     reaction_type: Option<i64>,
+    associated_message_guid: Option<String>,
+    reaction_emoji: Option<String>,
     thread_originator_guid: Option<String>,
     is_edited: bool,
     has_attachments: bool,
@@ -79,7 +81,10 @@ pub fn import_messages(
         .execute(
             "UPDATE conversations
              SET message_count = (
-                 SELECT COUNT(*) FROM messages WHERE messages.conversation_id = conversations.id
+                 SELECT COUNT(*)
+                 FROM messages
+                 WHERE messages.conversation_id = conversations.id
+                   AND messages.is_reaction = FALSE
              ),
              last_message_date = (
                  SELECT MAX(date_unix) FROM messages WHERE messages.conversation_id = conversations.id
@@ -201,12 +206,6 @@ fn process_message(
     source_conn: &Connection,
     handle_id_map: &HashMap<i64, i64>,
 ) -> Option<MessageRow> {
-    if let Some(assoc_type) = message.associated_message_type {
-        if (1000..=4000).contains(&assoc_type) {
-            return None;
-        }
-    }
-
     let decoded = match message.generate_text(source_conn) {
         Ok(text) => Some(strip_apple_replacements(text)),
         Err(_) => message.text.as_deref().map(strip_apple_replacements),
@@ -221,6 +220,10 @@ fn process_message(
 
     let date_unix = message.date / 1_000_000_000 + 978_307_200;
     let is_from_me = message.is_from_me();
+    let reaction_type = message.associated_message_type.map(i64::from);
+    let is_reaction = reaction_type
+        .map(|kind| (1000..=3999).contains(&kind))
+        .unwrap_or(false);
 
     Some(MessageRow {
         apple_message_id: message.rowid as i64,
@@ -231,13 +234,30 @@ fn process_message(
         body: decoded,
         date_unix,
         service: message.service.clone(),
-        is_reaction: false,
-        reaction_type: None,
+        is_reaction,
+        reaction_type,
+        associated_message_guid: normalize_associated_guid(
+            message.associated_message_guid.as_deref(),
+        ),
+        reaction_emoji: message.associated_message_emoji.clone(),
         thread_originator_guid: message.thread_originator_guid.clone(),
         is_edited: message.is_edited(),
         has_attachments: message.has_attachments(),
         balloon_bundle_id: message.balloon_bundle_id.clone(),
     })
+}
+
+fn normalize_associated_guid(guid: Option<&str>) -> Option<String> {
+    let guid = guid?;
+    if let Some(stripped) = guid.strip_prefix("p:") {
+        let mut parts = stripped.split('/');
+        let _idx = parts.next()?;
+        return parts.next()?.get(0..36).map(ToString::to_string);
+    }
+    if let Some(stripped) = guid.strip_prefix("bp:") {
+        return stripped.get(0..36).map(ToString::to_string);
+    }
+    guid.get(0..36).map(ToString::to_string)
 }
 
 fn import_contacts(
@@ -475,8 +495,8 @@ fn insert_message_batch(port_db: &mut Connection, batch: &[MessageRow]) -> Resul
         let mut stmt = tx
             .prepare_cached(
                 "INSERT OR REPLACE INTO messages
-                    (apple_message_id, guid, conversation_id, sender_id, is_from_me, body, date_unix, service, is_reaction, reaction_type, thread_originator_guid, is_edited, has_attachments, balloon_bundle_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    (apple_message_id, guid, conversation_id, sender_id, is_from_me, body, date_unix, service, is_reaction, reaction_type, associated_message_guid, reaction_emoji, thread_originator_guid, is_edited, has_attachments, balloon_bundle_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             )
             .map_err(|_| Error)?;
 
@@ -492,6 +512,8 @@ fn insert_message_batch(port_db: &mut Connection, batch: &[MessageRow]) -> Resul
                 row.service.as_deref(),
                 row.is_reaction,
                 row.reaction_type,
+                row.associated_message_guid.as_deref(),
+                row.reaction_emoji.as_deref(),
                 row.thread_originator_guid.as_deref(),
                 row.is_edited,
                 row.has_attachments,

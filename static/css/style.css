@@ -41,6 +41,7 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   line-height: 1.5;
+  letter-spacing: -0.01em;
   height: 100vh;
   overflow: hidden;
 }
@@ -537,6 +538,17 @@ body {
     word-wrap: break-word;
 }
 
+.im-message-bubble--sticker {
+    background: transparent !important;
+    padding: 0;
+    box-shadow: none;
+}
+
+.im-message-bubble--sticker::before,
+.im-message-bubble--sticker::after {
+    display: none;
+}
+
 /* Sent Messages (Blue) */
 .im-message-group--sent .im-message-bubble {
     background: var(--im-bubble-sent-bg);
@@ -655,6 +667,17 @@ body {
     white-space: pre-wrap;
 }
 
+.im-message-text a {
+    color: inherit;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+}
+
+.im-message-text a:hover {
+    opacity: 0.85;
+}
+
 /* Message Time — positioned outside bubble, below the message group */
 .im-message-time {
     display: none;
@@ -702,16 +725,54 @@ body {
     gap: 8px;
 }
 
+.im-attachments--grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+}
+
+.im-attachments--grid .im-attachment {
+    min-width: 0;
+}
+
 .im-attachment-image {
     max-width: 100%;
     border-radius: 12px;
     overflow: hidden;
 }
 
+.im-attachments--grid .im-attachment-image {
+    aspect-ratio: 1;
+}
+
 .im-attachment-image img {
     width: 100%;
     height: auto;
     display: block;
+}
+
+.im-attachments--grid .im-attachment-image img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.im-attachment-image--sticker {
+    background: transparent;
+    border-radius: 16px;
+    overflow: visible;
+}
+
+.im-attachment-image--sticker img {
+    filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.18));
+}
+
+.im-message-bubble--sticker .im-attachments {
+    margin-top: 0;
+}
+
+.im-message-bubble--sticker .im-attachment-image {
+    margin: -4px 0;
 }
 
 .im-attachment-file {
@@ -744,6 +805,37 @@ body {
 .im-attachment-size {
     font-size: 11px;
     opacity: 0.7;
+}
+
+.im-message-reactions {
+    position: absolute;
+    right: 8px;
+    bottom: -12px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 6px;
+    border: 1px solid var(--im-border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--im-bg-primary) 92%, transparent);
+    box-shadow: 0 2px 8px var(--im-shadow);
+    z-index: 2;
+}
+
+.im-message-group--received .im-message-reactions {
+    left: 8px;
+    right: auto;
+}
+
+.im-message-reaction {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
 }
 
 /* Loading Sentinel */
@@ -1152,6 +1244,11 @@ body {
   to   { opacity: 1; transform: translateY(0); }
 }
 
+@keyframes springUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
 @keyframes fadeIn {
   from { opacity: 0; }
   to   { opacity: 1; }
@@ -1190,7 +1287,7 @@ body {
 
 /* Message groups: fade-in-up */
 .im-message-group {
-  animation: fadeInUp 0.3s ease-out both;
+  animation: springUp 0.34s cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
 }
 
 /* Date separators: fade in */

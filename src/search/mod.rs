@@ -24,6 +24,7 @@ JOIN messages m ON m.id = messages_fts.rowid
 JOIN conversations c ON c.id = m.conversation_id
 LEFT JOIN contacts ct ON ct.id = m.sender_id
 WHERE messages_fts MATCH ?1
+  AND m.is_reaction = FALSE
 ORDER BY m.date_unix DESC
 LIMIT ?2 OFFSET ?3
 ";
@@ -36,6 +37,7 @@ FROM messages m
 JOIN conversations c ON c.id = m.conversation_id
 LEFT JOIN contacts ct ON ct.id = m.sender_id
 WHERE m.body LIKE '%' || ?1 || '%'
+  AND m.is_reaction = FALSE
 ORDER BY m.date_unix DESC
 LIMIT ?2 OFFSET ?3
 ";
@@ -45,12 +47,14 @@ SELECT COUNT(*)
 FROM messages_fts
 JOIN messages m ON m.id = messages_fts.rowid
 WHERE messages_fts MATCH ?1
+  AND m.is_reaction = FALSE
 ";
 
 const LIKE_COUNT_QUERY: &str = "
 SELECT COUNT(*)
 FROM messages m
 WHERE m.body LIKE '%' || ?1 || '%'
+  AND m.is_reaction = FALSE
 ";
 
 pub fn search(

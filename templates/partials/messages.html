@@ -61,21 +61,21 @@
                 {% endif %}
                 {% for msg in group.messages %}
                 <div class="im-message{% if let Some(fid) = focus_id %}{% if *fid == msg.id %} im-message--focused{% endif %}{% endif %}" id="msg-{{ msg.id }}">
-                    <div class="im-message-bubble">
-                        {% if let Some(body) = msg.body %}
-                        <p class="im-message-text">{{ body }}</p>
+                    <div class="im-message-bubble{% if msg.is_sticker_only %} im-message-bubble--sticker{% endif %}">
+                        {% if let Some(body_html) = msg.body_html %}
+                        <p class="im-message-text">{{ body_html|safe }}</p>
                         {% endif %}
                         
                         {% if msg.has_attachments %}
-                        <div class="im-attachments">
+                        <div class="im-attachments{% if msg.use_attachment_grid %} im-attachments--grid{% endif %}">
                             {% for att in msg.attachments %}
                             <div class="im-attachment">
-                                {% if let Some(mime) = att.mime_type %}
-                                    {% if mime.starts_with("image/") %}
-                                    <div class="im-attachment-image">
+                                {% if att.is_image %}
+                                    <div class="im-attachment-image{% if att.is_sticker %} im-attachment-image--sticker{% endif %}">
                                         <img src="/attachments/download/{{ att.id }}" alt="" loading="lazy">
                                     </div>
-                                    {% else %}
+                                {% else %}
+                                    {% if let Some(mime) = att.mime_type %}
                                     <a href="/attachments/download/{{ att.id }}" class="im-attachment-file">
                                         <span class="im-attachment-icon">📎</span>
                                         <span class="im-attachment-name">
@@ -88,6 +88,13 @@
                                     {% endif %}
                                 {% endif %}
                             </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        {% if !msg.reactions.is_empty() %}
+                        <div class="im-message-reactions" aria-label="Reactions">
+                            {% for reaction in msg.reactions %}
+                            <span class="im-message-reaction" title="{{ reaction.title }}">{{ reaction.glyph }}</span>
                             {% endfor %}
                         </div>
                         {% endif %}

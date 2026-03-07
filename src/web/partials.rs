@@ -3,6 +3,7 @@ use axum::extract::{Query, State};
 use axum::response::{Html, IntoResponse};
 use chrono::DateTime;
 use serde::Deserialize;
+use std::collections::HashMap;
 
 use crate::db::queries;
 use crate::search;
@@ -244,7 +245,7 @@ pub struct MessagesQuery {
 
 struct MessageView {
     id: i64,
-    body: Option<String>,
+    body_html: Option<String>,
     is_from_me: bool,
     service: Option<String>,
     sender_name: Option<String>,
@@ -252,6 +253,9 @@ struct MessageView {
     time_formatted: String,
     date_formatted: String,
     attachments: Vec<AttachmentView>,
+    reactions: Vec<ReactionView>,
+    use_attachment_grid: bool,
+    is_sticker_only: bool,
     sender_id: Option<i64>,
     has_sender_photo: bool,
 }
@@ -269,6 +273,131 @@ struct AttachmentView {
     mime_type: Option<String>,
     transfer_name: Option<String>,
     total_bytes: Option<i64>,
+    is_sticker: bool,
+    is_image: bool,
+}
+
+struct ReactionView {
+    glyph: String,
+    title: String,
+}
+
+fn escape_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
+fn split_trailing_punctuation(url: &str) -> (&str, &str) {
+    let mut cut = url.len();
+    for (idx, ch) in url.char_indices().rev() {
+        if matches!(ch, '.' | ',' | '!' | '?' | ':' | ';' | ')' | ']') {
+            cut = idx;
+            continue;
+        }
+        break;
+    }
+    url.split_at(cut)
+}
+
+fn linkify_text(input: &str) -> String {
+    let mut html = String::new();
+    let mut cursor = 0;
+
+    while let Some(relative_start) = {
+        let segment = &input[cursor..];
+        match (segment.find("http://"), segment.find("https://")) {
+            (Some(http), Some(https)) => Some(http.min(https)),
+            (Some(http), None) => Some(http),
+            (None, Some(https)) => Some(https),
+            (None, None) => None,
+        }
+    } {
+        let start = cursor + relative_start;
+        html.push_str(&escape_html(&input[cursor..start]));
+
+        let rest = &input[start..];
+        let end = rest
+            .find(char::is_whitespace)
+            .map_or(input.len(), |idx| start + idx);
+        let raw_url = &input[start..end];
+        let (clean_url, trailing) = split_trailing_punctuation(raw_url);
+
+        if clean_url.is_empty() {
+            html.push_str(&escape_html(raw_url));
+        } else {
+            let escaped_url = escape_html(clean_url);
+            html.push_str("<a href=\"");
+            html.push_str(&escaped_url);
+            html.push_str("\" target=\"_blank\" rel=\"noreferrer noopener\">");
+            html.push_str(&escaped_url);
+            html.push_str("</a>");
+            html.push_str(&escape_html(trailing));
+        }
+
+        cursor = end;
+    }
+
+    html.push_str(&escape_html(&input[cursor..]));
+    html
+}
+
+fn reaction_view(reaction: &queries::MessageReaction) -> Option<ReactionView> {
+    let (glyph, title) = match reaction.reaction_type {
+        2000 => ("❤", "Loved"),
+        2001 => ("👍", "Liked"),
+        2002 => ("👎", "Disliked"),
+        2003 => ("ha", "Laughed"),
+        2004 => ("!!", "Emphasized"),
+        2005 => ("?", "Questioned"),
+        2006 => (
+            reaction.reaction_emoji.as_deref().unwrap_or("🙂"),
+            "Reacted",
+        ),
+        _ => return None,
+    };
+
+    Some(ReactionView {
+        glyph: glyph.to_string(),
+        title: title.to_string(),
+    })
+}
+
+fn build_reactions(reactions: Vec<queries::MessageReaction>) -> Vec<ReactionView> {
+    let mut by_sender: HashMap<String, ReactionView> = HashMap::new();
+
+    for reaction in reactions {
+        let sender_key = if reaction.is_from_me {
+            "me".to_string()
+        } else {
+            reaction
+                .sender_name
+                .clone()
+                .unwrap_or_else(|| "unknown".to_string())
+        };
+
+        if (3000..=3007).contains(&reaction.reaction_type) {
+            by_sender.remove(&sender_key);
+            continue;
+        }
+
+        if let Some(view) = reaction_view(&reaction) {
+            by_sender.insert(sender_key, view);
+        }
+    }
+
+    let mut resolved: Vec<ReactionView> = by_sender.into_values().collect();
+    resolved.sort_by(|left, right| left.title.cmp(&right.title));
+    resolved
 }
 
 #[derive(Template)]
@@ -350,7 +479,10 @@ pub async fn messages_partial(
         .filter(|m| m.has_attachments)
         .map(|m| m.id)
         .collect();
+    let message_guids: Vec<String> = raw_messages.iter().map(|m| m.guid.clone()).collect();
     let mut att_map = queries::get_message_attachments(&conn, &message_ids).unwrap_or_default();
+    let mut reaction_map =
+        queries::get_reactions_for_messages(&conn, &message_guids).unwrap_or_default();
 
     let mut messages: Vec<MessageView> = raw_messages
         .into_iter()
@@ -362,20 +494,38 @@ pub async fn messages_partial(
             let date_formatted = dt
                 .map(|d| d.format("%b %d, %Y").to_string())
                 .unwrap_or_default();
-            let attachments = att_map
+            let attachments: Vec<AttachmentView> = att_map
                 .remove(&m.id)
                 .unwrap_or_default()
                 .into_iter()
-                .map(|a| AttachmentView {
-                    id: a.id,
-                    mime_type: a.mime_type,
-                    transfer_name: a.transfer_name,
-                    total_bytes: a.total_bytes,
+                .map(|a| {
+                    let mime_type = a.mime_type;
+                    let is_image = mime_type
+                        .as_deref()
+                        .map(|mime| mime.starts_with("image/"))
+                        .unwrap_or(false);
+
+                    AttachmentView {
+                        id: a.id,
+                        mime_type,
+                        transfer_name: a.transfer_name,
+                        total_bytes: a.total_bytes,
+                        is_sticker: a.is_sticker,
+                        is_image,
+                    }
                 })
                 .collect();
+            let image_attachment_count = attachments
+                .iter()
+                .filter(|att| att.is_image && !att.is_sticker)
+                .count();
+            let is_sticker_only = m.body.as_deref().unwrap_or_default().trim().is_empty()
+                && !attachments.is_empty()
+                && attachments.iter().all(|att| att.is_sticker);
+            let reactions = build_reactions(reaction_map.remove(&m.guid).unwrap_or_default());
             MessageView {
                 id: m.id,
-                body: m.body,
+                body_html: m.body.as_deref().map(linkify_text),
                 is_from_me: m.is_from_me,
                 service: m.service,
                 sender_name: m.sender_name,
@@ -383,6 +533,9 @@ pub async fn messages_partial(
                 time_formatted,
                 date_formatted,
                 attachments,
+                reactions,
+                use_attachment_grid: image_attachment_count > 1,
+                is_sticker_only,
                 sender_id: m.sender_id,
                 has_sender_photo: m.has_sender_photo,
             }

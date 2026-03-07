@@ -44,6 +44,8 @@ CREATE TABLE IF NOT EXISTS messages (
     service TEXT,
     is_reaction BOOLEAN DEFAULT FALSE,
     reaction_type INTEGER,
+    associated_message_guid TEXT,
+    reaction_emoji TEXT,
     thread_originator_guid TEXT,
     is_edited BOOLEAN DEFAULT FALSE,
     has_attachments BOOLEAN DEFAULT FALSE,
@@ -93,9 +95,32 @@ pub fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(CREATE_MESSAGES)?;
     conn.execute_batch(CREATE_ATTACHMENTS)?;
     conn.execute_batch(CREATE_MESSAGES_FTS)?;
+    ensure_column(conn, "messages", "associated_message_guid", "TEXT")?;
+    ensure_column(conn, "messages", "reaction_emoji", "TEXT")?;
     for idx in CREATE_INDEXES {
         conn.execute_batch(idx)?;
     }
+    Ok(())
+}
+
+fn ensure_column(
+    conn: &Connection,
+    table: &str,
+    column_name: &str,
+    column_type: &str,
+) -> rusqlite::Result<()> {
+    let pragma = format!("PRAGMA table_info({table})");
+    let mut stmt = conn.prepare(&pragma)?;
+    let columns = stmt
+        .query_map([], |row| row.get::<_, String>(1))?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if columns.iter().any(|col| col == column_name) {
+        return Ok(());
+    }
+
+    let sql = format!("ALTER TABLE {table} ADD COLUMN {column_name} {column_type}");
+    conn.execute(&sql, [])?;
     Ok(())
 }
 

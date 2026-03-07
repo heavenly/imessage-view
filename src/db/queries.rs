@@ -157,6 +157,7 @@ pub fn overall_stats(conn: &Connection) -> anyhow::Result<OverallStats> {
 #[derive(Debug, Serialize)]
 pub struct MessageRow {
     pub id: i64,
+    pub guid: String,
     pub body: Option<String>,
     pub is_from_me: bool,
     pub date_unix: i64,
@@ -174,6 +175,31 @@ pub struct MessageAttachment {
     pub mime_type: Option<String>,
     pub transfer_name: Option<String>,
     pub total_bytes: Option<i64>,
+    pub is_sticker: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct MessageReaction {
+    pub target_guid: String,
+    pub is_from_me: bool,
+    pub sender_name: Option<String>,
+    pub reaction_type: i64,
+    pub reaction_emoji: Option<String>,
+}
+
+fn map_message_row(row: &rusqlite::Row) -> rusqlite::Result<MessageRow> {
+    Ok(MessageRow {
+        id: row.get(0)?,
+        guid: row.get(1)?,
+        body: row.get(2)?,
+        is_from_me: row.get(3)?,
+        date_unix: row.get(4)?,
+        service: row.get(5)?,
+        sender_name: row.get(6)?,
+        has_attachments: row.get(7)?,
+        sender_id: row.get(8)?,
+        has_sender_photo: row.get::<_, bool>(9).unwrap_or(false),
+    })
 }
 
 #[derive(Debug, Serialize)]
@@ -249,6 +275,7 @@ pub fn get_messages(
     let offset = page * per_page;
     let mut stmt = conn.prepare(
         "SELECT m.id,
+                m.guid,
                 m.body,
                 m.is_from_me,
                 m.date_unix,
@@ -260,6 +287,7 @@ pub fn get_messages(
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
+           AND m.is_reaction = FALSE
          ORDER BY m.date_unix DESC
          LIMIT ?2 OFFSET ?3",
     )?;
@@ -267,19 +295,7 @@ pub fn get_messages(
     let rows = stmt
         .query_map(
             rusqlite::params![conversation_id, per_page, offset],
-            |row| {
-                Ok(MessageRow {
-                    id: row.get(0)?,
-                    body: row.get(1)?,
-                    is_from_me: row.get(2)?,
-                    date_unix: row.get(3)?,
-                    service: row.get(4)?,
-                    sender_name: row.get(5)?,
-                    has_attachments: row.get(6)?,
-                    sender_id: row.get(7)?,
-                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
-                })
-            },
+            map_message_row,
         )?
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -308,7 +324,7 @@ pub fn get_messages_around(
     // Step 2: Get `context + 1` messages BEFORE the target (older), ordered DESC
     let before_limit = context + 1;
     let mut stmt_before = conn.prepare(
-        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+        "SELECT m.id, m.guid, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
                 m.has_attachments,
                 ct.id AS sender_id,
@@ -316,6 +332,7 @@ pub fn get_messages_around(
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
+           AND m.is_reaction = FALSE
            AND (m.date_unix < ?2 OR (m.date_unix = ?2 AND m.id < ?3))
          ORDER BY m.date_unix DESC, m.id DESC
          LIMIT ?4",
@@ -323,19 +340,7 @@ pub fn get_messages_around(
     let before_rows: Vec<MessageRow> = stmt_before
         .query_map(
             rusqlite::params![conversation_id, target_date, target_id, before_limit],
-            |row| {
-                Ok(MessageRow {
-                    id: row.get(0)?,
-                    body: row.get(1)?,
-                    is_from_me: row.get(2)?,
-                    date_unix: row.get(3)?,
-                    service: row.get(4)?,
-                    sender_name: row.get(5)?,
-                    has_attachments: row.get(6)?,
-                    sender_id: row.get(7)?,
-                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
-                })
-            },
+            map_message_row,
         )?
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -345,7 +350,7 @@ pub fn get_messages_around(
     // Step 3: Get `context + 1` messages AFTER the target (newer), ordered ASC
     let after_limit = context + 1;
     let mut stmt_after = conn.prepare(
-        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+        "SELECT m.id, m.guid, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
                 m.has_attachments,
                 ct.id AS sender_id,
@@ -353,6 +358,7 @@ pub fn get_messages_around(
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
+           AND m.is_reaction = FALSE
            AND (m.date_unix > ?2 OR (m.date_unix = ?2 AND m.id > ?3))
          ORDER BY m.date_unix ASC, m.id ASC
          LIMIT ?4",
@@ -360,19 +366,7 @@ pub fn get_messages_around(
     let after_rows: Vec<MessageRow> = stmt_after
         .query_map(
             rusqlite::params![conversation_id, target_date, target_id, after_limit],
-            |row| {
-                Ok(MessageRow {
-                    id: row.get(0)?,
-                    body: row.get(1)?,
-                    is_from_me: row.get(2)?,
-                    date_unix: row.get(3)?,
-                    service: row.get(4)?,
-                    sender_name: row.get(5)?,
-                    has_attachments: row.get(6)?,
-                    sender_id: row.get(7)?,
-                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
-                })
-            },
+            map_message_row,
         )?
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -381,28 +375,17 @@ pub fn get_messages_around(
 
     // Step 4: Get the target message itself
     let target_msg: MessageRow = conn.query_row(
-        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+        "SELECT m.id, m.guid, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
                 m.has_attachments,
                 ct.id AS sender_id,
                 (ct.photo IS NOT NULL) AS has_sender_photo
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
-         WHERE m.id = ?1",
+         WHERE m.id = ?1
+           AND m.is_reaction = FALSE",
         [target_message_id],
-        |row| {
-            Ok(MessageRow {
-                id: row.get(0)?,
-                body: row.get(1)?,
-                is_from_me: row.get(2)?,
-                date_unix: row.get(3)?,
-                service: row.get(4)?,
-                sender_name: row.get(5)?,
-                has_attachments: row.get(6)?,
-                sender_id: row.get(7)?,
-                has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
-            })
-        },
+        map_message_row,
     )?;
 
     // Step 5: Combine: before (reversed to chronological) + target + after
@@ -435,7 +418,7 @@ pub fn get_messages_before(
     )?;
 
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+        "SELECT m.id, m.guid, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
                 m.has_attachments,
                 ct.id AS sender_id,
@@ -443,6 +426,7 @@ pub fn get_messages_before(
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
+           AND m.is_reaction = FALSE
            AND (m.date_unix < ?2 OR (m.date_unix = ?2 AND m.id < ?3))
          ORDER BY m.date_unix DESC, m.id DESC
          LIMIT ?4",
@@ -451,19 +435,7 @@ pub fn get_messages_before(
     let rows: Vec<MessageRow> = stmt
         .query_map(
             rusqlite::params![conversation_id, anchor_date, anchor_id, limit],
-            |row| {
-                Ok(MessageRow {
-                    id: row.get(0)?,
-                    body: row.get(1)?,
-                    is_from_me: row.get(2)?,
-                    date_unix: row.get(3)?,
-                    service: row.get(4)?,
-                    sender_name: row.get(5)?,
-                    has_attachments: row.get(6)?,
-                    sender_id: row.get(7)?,
-                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
-                })
-            },
+            map_message_row,
         )?
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -483,7 +455,7 @@ pub fn get_messages_after(
     )?;
 
     let mut stmt = conn.prepare(
-        "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
+        "SELECT m.id, m.guid, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
                 m.has_attachments,
                 ct.id AS sender_id,
@@ -491,6 +463,7 @@ pub fn get_messages_after(
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
+           AND m.is_reaction = FALSE
            AND (m.date_unix > ?2 OR (m.date_unix = ?2 AND m.id > ?3))
          ORDER BY m.date_unix ASC, m.id ASC
          LIMIT ?4",
@@ -499,19 +472,7 @@ pub fn get_messages_after(
     let rows: Vec<MessageRow> = stmt
         .query_map(
             rusqlite::params![conversation_id, anchor_date, anchor_id, limit],
-            |row| {
-                Ok(MessageRow {
-                    id: row.get(0)?,
-                    body: row.get(1)?,
-                    is_from_me: row.get(2)?,
-                    date_unix: row.get(3)?,
-                    service: row.get(4)?,
-                    sender_name: row.get(5)?,
-                    has_attachments: row.get(6)?,
-                    sender_id: row.get(7)?,
-                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
-                })
-            },
+            map_message_row,
         )?
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -528,7 +489,7 @@ pub fn get_message_attachments(
 
     let placeholders: Vec<String> = message_ids.iter().map(|_| "?".to_string()).collect();
     let sql = format!(
-        "SELECT id, message_id, filename, mime_type, transfer_name, total_bytes
+        "SELECT id, message_id, filename, mime_type, transfer_name, total_bytes, is_sticker
          FROM attachments
          WHERE message_id IN ({})
          ORDER BY id",
@@ -551,6 +512,7 @@ pub fn get_message_attachments(
                     mime_type: row.get(3)?,
                     transfer_name: row.get(4)?,
                     total_bytes: row.get(5)?,
+                    is_sticker: row.get::<_, bool>(6).unwrap_or(false),
                 },
             ))
         })?
@@ -560,6 +522,58 @@ pub fn get_message_attachments(
         std::collections::HashMap::new();
     for (msg_id, att) in rows {
         map.entry(msg_id).or_default().push(att);
+    }
+    Ok(map)
+}
+
+pub fn get_reactions_for_messages(
+    conn: &Connection,
+    message_guids: &[String],
+) -> anyhow::Result<std::collections::HashMap<String, Vec<MessageReaction>>> {
+    if message_guids.is_empty() {
+        return Ok(std::collections::HashMap::new());
+    }
+
+    let placeholders: Vec<String> = message_guids.iter().map(|_| "?".to_string()).collect();
+    let sql = format!(
+        "SELECT m.associated_message_guid,
+                m.is_from_me,
+                COALESCE(ct.display_name, ct.handle) AS sender_name,
+                m.reaction_type,
+                m.reaction_emoji
+         FROM messages m
+         LEFT JOIN contacts ct ON ct.id = m.sender_id
+         WHERE m.is_reaction = TRUE
+           AND m.associated_message_guid IN ({})
+         ORDER BY m.date_unix ASC, m.id ASC",
+        placeholders.join(",")
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::types::ToSql> = message_guids
+        .iter()
+        .map(|guid| guid as &dyn rusqlite::types::ToSql)
+        .collect();
+
+    let rows = stmt
+        .query_map(params.as_slice(), |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                MessageReaction {
+                    target_guid: row.get(0)?,
+                    is_from_me: row.get(1)?,
+                    sender_name: row.get(2)?,
+                    reaction_type: row.get(3)?,
+                    reaction_emoji: row.get(4)?,
+                },
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut map: std::collections::HashMap<String, Vec<MessageReaction>> =
+        std::collections::HashMap::new();
+    for (guid, reaction) in rows {
+        map.entry(guid).or_default().push(reaction);
     }
     Ok(map)
 }
@@ -590,11 +604,12 @@ pub fn conversation_list(
                     c.is_group,
                     c.last_message_date,
                     c.message_count,
-                    (SELECT SUBSTR(m.body, 1, 80)
-                     FROM messages m
-                     WHERE m.conversation_id = c.id
-                     ORDER BY m.date_unix DESC
-                     LIMIT 1) AS last_preview,
+                     (SELECT SUBSTR(m.body, 1, 80)
+                      FROM messages m
+                      WHERE m.conversation_id = c.id
+                        AND m.is_reaction = FALSE
+                      ORDER BY m.date_unix DESC
+                      LIMIT 1) AS last_preview,
                     CASE WHEN c.is_group THEN
                         (c.group_photo_path IS NOT NULL)
                     ELSE

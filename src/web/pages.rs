@@ -11,7 +11,7 @@ use super::format::{
     display_initial, format_contact_label, format_contact_value, format_conversation_name,
 };
 use super::partials::{
-    ContributionDay, GroupParticipantStatView, GroupReactionHighlightView, HourlyStatView,
+    ContributionGraph, GroupParticipantStatView, GroupReactionHighlightView, HourlyStatView,
 };
 
 fn canonical_conversation_id(conn: &rusqlite::Connection, conversation_id: i64) -> i64 {
@@ -136,7 +136,7 @@ struct ConversationTemplate {
     participants: Vec<String>,
     attachment_count: i64,
     has_photo: bool,
-    contribution_days: Vec<ContributionDay>,
+    contribution_graph: ContributionGraph,
     avg_their_response: Option<String>,
     avg_my_response: Option<String>,
     avg_time_between: Option<String>,
@@ -184,7 +184,7 @@ pub async fn conversation(
 
     let attachment_count =
         queries::count_conversation_attachments(&conn, canonical_id).unwrap_or(0);
-    let contribution_days =
+    let contribution_graph =
         super::partials::build_contribution_graph(&conn, canonical_id, is_group);
     let conversation_started_unix =
         queries::get_conversation_first_message_unix(&conn, canonical_id).unwrap_or_default();
@@ -228,7 +228,7 @@ pub async fn conversation(
         participants,
         attachment_count,
         has_photo,
-        contribution_days,
+        contribution_graph,
         avg_their_response,
         avg_my_response,
         avg_time_between,

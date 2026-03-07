@@ -1554,6 +1554,9 @@ body {
 .contribution-graph {
   width: 100%;
   margin-top: 12px;
+  --contribution-label-width: 28px;
+  --contribution-cell-size: 11px;
+  --contribution-gap: 3px;
 }
 
 .contribution-graph-label {
@@ -1562,18 +1565,75 @@ body {
   margin: 0 0 6px 0;
 }
 
-.contribution-grid {
+.contribution-axis--months {
   display: grid;
-  grid-template-columns: repeat(15, 1fr);
-  gap: 3px;
+  grid-template-columns: var(--contribution-label-width) repeat(var(--contribution-weeks), var(--contribution-cell-size));
+  gap: var(--contribution-gap);
+  align-items: end;
+  margin-bottom: 6px;
+  overflow: visible;
+}
+
+.contribution-axis-spacer {
+  width: var(--contribution-label-width);
+}
+
+.contribution-month-label {
+  min-height: 14px;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--im-text-secondary);
+  text-align: left;
+  white-space: nowrap;
+  overflow: visible;
+}
+
+.contribution-chart {
+  display: grid;
+  grid-template-columns: var(--contribution-label-width) auto;
+  gap: var(--contribution-gap);
+  align-items: start;
+}
+
+.contribution-weekday-axis {
+  display: grid;
+  grid-template-rows: repeat(7, var(--contribution-cell-size));
+  gap: var(--contribution-gap);
+}
+
+.contribution-weekday-label {
+  height: var(--contribution-cell-size);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  font-size: 10px;
+  line-height: 1;
+  color: var(--im-text-secondary);
+}
+
+.contribution-weeks {
+  display: grid;
+  grid-template-columns: repeat(var(--contribution-weeks), var(--contribution-cell-size));
+  gap: var(--contribution-gap);
+}
+
+.contribution-week {
+  display: grid;
+  grid-template-rows: repeat(7, var(--contribution-cell-size));
+  gap: var(--contribution-gap);
 }
 
 .contribution-cell {
-  aspect-ratio: 1;
+  width: var(--contribution-cell-size);
+  height: var(--contribution-cell-size);
   border-radius: 3px;
   background: var(--im-bg-tertiary);
   position: relative;
   cursor: default;
+}
+
+.contribution-cell--empty {
+  background: transparent;
 }
 
 .contribution-cell::after {
@@ -1600,16 +1660,20 @@ body {
   visibility: visible;
 }
 
-/* Left-edge cells (columns 1-2): align tooltip to the left */
-.contribution-cell:nth-child(15n+1)::after,
-.contribution-cell:nth-child(15n+2)::after {
+.contribution-cell--empty::after {
+  content: none;
+}
+
+/* Left-edge weeks: align tooltip to the left */
+.contribution-week:nth-child(1) .contribution-cell::after,
+.contribution-week:nth-child(2) .contribution-cell::after {
   left: 0;
   transform: none;
 }
 
-/* Right-edge cells (columns 14-15): align tooltip to the right */
-.contribution-cell:nth-child(15n+14)::after,
-.contribution-cell:nth-child(15n)::after {
+/* Right-edge weeks: align tooltip to the right */
+.contribution-week:nth-last-child(2) .contribution-cell::after,
+.contribution-week:nth-last-child(1) .contribution-cell::after {
   left: auto;
   right: 0;
   transform: none;
@@ -1633,6 +1697,31 @@ body {
 
 .contribution-level-4 {
   background: var(--im-accent);
+}
+
+@media (max-width: 640px) {
+  .contribution-graph {
+    --contribution-label-width: 24px;
+    --contribution-cell-size: 9px;
+  }
+
+  .contribution-chart {
+    grid-template-columns: var(--contribution-label-width) auto;
+  }
+
+  .contribution-axis--months {
+    grid-template-columns: var(--contribution-label-width) repeat(var(--contribution-weeks), var(--contribution-cell-size));
+  }
+
+  .contribution-axis-spacer {
+    width: var(--contribution-label-width);
+  }
+
+  .contribution-month-label,
+  .contribution-weekday-label,
+  .contribution-cell::after {
+    font-size: 9px;
+  }
 }
 
 /* Dark mode variable overrides */

@@ -36,6 +36,19 @@ pub struct ContributionDay {
     pub received: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ContributionWeek {
+    pub month_label: Option<String>,
+    pub days: Vec<Option<ContributionDay>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ContributionGraph {
+    pub weekday_labels: Vec<String>,
+    pub weeks: Vec<ContributionWeek>,
+    pub week_count: usize,
+}
+
 pub fn format_duration(seconds: f64) -> String {
     let s = seconds.round() as i64;
     if s < 60 {
@@ -122,8 +135,7 @@ pub fn build_contribution_graph(
     conn: &rusqlite::Connection,
     conversation_id: i64,
     is_group: bool,
-) -> Vec<ContributionDay> {
-    use std::collections::HashMap;
+) -> ContributionGraph {
     let rows = queries::get_mutual_interaction_days(conn, conversation_id, 90).unwrap_or_default();
     let day_map: HashMap<String, &queries::MutualInteractionDay> =
         rows.iter().map(|d| (d.date.clone(), d)).collect();
@@ -144,36 +156,80 @@ pub fn build_contribution_graph(
         .unwrap_or(1) as f64;
 
     let today = chrono::Utc::now().date_naive();
-    let mut result = Vec::with_capacity(90);
-    for i in (0..90).rev() {
-        let date = today - chrono::Duration::days(i);
-        let date_str = date.format("%Y-%m-%d").to_string();
-        let date_display = date.format("%b %-d, %Y").to_string();
-        let (level, sent, received) = match day_map.get(&date_str) {
-            Some(d) if is_active(d) => {
-                let ratio = (d.sent + d.received) as f64 / max_total;
-                let l = if ratio > 0.75 {
-                    4
-                } else if ratio > 0.50 {
-                    3
-                } else if ratio > 0.25 {
-                    2
-                } else {
-                    1
+    let oldest_date = today - chrono::Duration::days(89);
+    let grid_start = oldest_date
+        - chrono::Duration::days(oldest_date.weekday().num_days_from_monday() as i64);
+    let grid_end = today
+        + chrono::Duration::days((6 - today.weekday().num_days_from_monday()) as i64);
+
+    let mut current = grid_start;
+    let mut weeks = Vec::new();
+    let mut previous_month: Option<u32> = None;
+
+    while current <= grid_end {
+        let mut days = Vec::with_capacity(7);
+        let mut first_in_range_month: Option<u32> = None;
+        let mut first_in_range_label: Option<String> = None;
+
+        for _ in 0..7 {
+            if current >= oldest_date && current <= today {
+                if first_in_range_month.is_none() {
+                    first_in_range_month = Some(current.month());
+                    first_in_range_label = Some(current.format("%b").to_string());
+                }
+
+                let date_str = current.format("%Y-%m-%d").to_string();
+                let date_display = current.format("%b %-d, %Y").to_string();
+                let (level, sent, received) = match day_map.get(&date_str) {
+                    Some(d) if is_active(d) => {
+                        let ratio = (d.sent + d.received) as f64 / max_total;
+                        let l = if ratio > 0.75 {
+                            4
+                        } else if ratio > 0.50 {
+                            3
+                        } else if ratio > 0.25 {
+                            2
+                        } else {
+                            1
+                        };
+                        (l, d.sent, d.received)
+                    }
+                    Some(d) => (0, d.sent, d.received),
+                    None => (0, 0, 0),
                 };
-                (l, d.sent, d.received)
+
+                days.push(Some(ContributionDay {
+                    date: date_display,
+                    level,
+                    sent,
+                    received,
+                }));
+            } else {
+                days.push(None);
             }
-            Some(d) => (0, d.sent, d.received),
-            None => (0, 0, 0),
+
+            current += chrono::Duration::days(1);
+        }
+
+        let month_label = match first_in_range_month {
+            Some(month) if previous_month != Some(month) => {
+                previous_month = Some(month);
+                first_in_range_label
+            }
+            _ => None,
         };
-        result.push(ContributionDay {
-            date: date_display,
-            level,
-            sent,
-            received,
-        });
+
+        weeks.push(ContributionWeek { month_label, days });
     }
-    result
+
+    ContributionGraph {
+        weekday_labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        week_count: weeks.len(),
+        weeks,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -512,7 +568,7 @@ struct ConversationPanelTemplate {
     participants: Vec<String>,
     attachment_count: i64,
     has_photo: bool,
-    contribution_days: Vec<ContributionDay>,
+    contribution_graph: ContributionGraph,
     avg_their_response: Option<String>,
     avg_my_response: Option<String>,
     avg_time_between: Option<String>,
@@ -545,7 +601,7 @@ pub async fn conversation_panel_partial(
     };
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
-    let contribution_days = build_contribution_graph(&conn, id, is_group);
+    let contribution_graph = build_contribution_graph(&conn, id, is_group);
     let conversation_started_unix =
         queries::get_conversation_first_message_unix(&conn, id).unwrap_or_default();
 
@@ -586,7 +642,7 @@ pub async fn conversation_panel_partial(
         participants,
         attachment_count,
         has_photo,
-        contribution_days,
+        contribution_graph,
         avg_their_response,
         avg_my_response,
         avg_time_between,

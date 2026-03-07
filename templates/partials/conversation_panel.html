@@ -194,14 +194,35 @@
             </div>
             <div class="contribution-graph">
                 <p class="contribution-graph-label">Last 90 days</p>
-                <div class="contribution-grid">
-                    {% for day in contribution_days %}
-                    {% if is_group %}
-                    <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent + day.received }} messages"></div>
-                    {% else %}
-                    <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent }} sent, {{ day.received }} received"></div>
-                    {% endif %}
+                <div class="contribution-axis contribution-axis--months" style="--contribution-weeks: {{ contribution_graph.week_count }};">
+                    <div class="contribution-axis-spacer"></div>
+                    {% for week in contribution_graph.weeks %}
+                    <div class="contribution-month-label">{% if let Some(label) = week.month_label %}{{ label }}{% endif %}</div>
                     {% endfor %}
+                </div>
+                <div class="contribution-chart" style="--contribution-weeks: {{ contribution_graph.week_count }};">
+                    <div class="contribution-weekday-axis">
+                        {% for label in contribution_graph.weekday_labels %}
+                        <div class="contribution-weekday-label">{{ label }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="contribution-weeks" style="--contribution-weeks: {{ contribution_graph.week_count }};">
+                        {% for week in contribution_graph.weeks %}
+                        <div class="contribution-week">
+                            {% for day in week.days %}
+                            {% if let Some(day) = day %}
+                            {% if is_group %}
+                            <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent + day.received }} messages"></div>
+                            {% else %}
+                            <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent }} sent, {{ day.received }} received"></div>
+                            {% endif %}
+                            {% else %}
+                            <div class="contribution-cell contribution-cell--empty"></div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
             {% if let Some(started_at) = conversation_started_at %}

@@ -40,6 +40,10 @@ pub fn router() -> Router<AppState> {
             get(partials::conversation_panel_partial),
         )
         .route(
+            "/partials/conversation-insights",
+            get(partials::conversation_insights_partial),
+        )
+        .route(
             "/partials/unified-search",
             get(partials::unified_search_partial),
         )

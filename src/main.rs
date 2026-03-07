@@ -1,6 +1,8 @@
 use clap::{Parser, Subcommand};
 use indicatif::{ProgressBar, ProgressStyle};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::RwLock;
 use std::sync::{Arc, Mutex};
 
 mod db;
@@ -51,6 +53,7 @@ fn serve() -> anyhow::Result<()> {
     let conn = db::open_existing(&db_path)?;
     let state = state::AppState {
         db: Arc::new(Mutex::new(conn)),
+        conversation_insights_cache: Arc::new(RwLock::new(HashMap::new())),
     };
 
     let app = web::router().with_state(state);

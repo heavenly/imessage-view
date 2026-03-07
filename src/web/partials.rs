@@ -4,6 +4,7 @@ use axum::response::{Html, IntoResponse};
 use chrono::{DateTime, Datelike, Local, NaiveDate};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 
 use crate::db::queries;
 use crate::search;
@@ -157,10 +158,10 @@ pub fn build_contribution_graph(
 
     let today = chrono::Utc::now().date_naive();
     let oldest_date = today - chrono::Duration::days(89);
-    let grid_start = oldest_date
-        - chrono::Duration::days(oldest_date.weekday().num_days_from_monday() as i64);
-    let grid_end = today
-        + chrono::Duration::days((6 - today.weekday().num_days_from_monday()) as i64);
+    let grid_start =
+        oldest_date - chrono::Duration::days(oldest_date.weekday().num_days_from_monday() as i64);
+    let grid_end =
+        today + chrono::Duration::days((6 - today.weekday().num_days_from_monday()) as i64);
 
     let mut current = grid_start;
     let mut weeks = Vec::new();
@@ -565,31 +566,57 @@ struct ConversationPanelTemplate {
     contact_name: String,
     is_group: bool,
     primary_contact_id: Option<i64>,
-    participants: Vec<String>,
     participant_summary: String,
-    attachment_count: i64,
+    attachment_count: Option<i64>,
     has_photo: bool,
-    contribution_graph: ContributionGraph,
-    avg_their_response: Option<String>,
-    avg_my_response: Option<String>,
-    avg_time_between: Option<String>,
-    conversation_started_at: Option<String>,
-    conversation_started_ago: Option<String>,
     focus_message_id: Option<i64>,
-    group_participant_stats: Vec<GroupParticipantStatView>,
-    reaction_highlights: Vec<GroupReactionHighlightView>,
-    hourly_stats: Vec<HourlyStatView>,
 }
 
-pub async fn conversation_panel_partial(
-    State(state): State<AppState>,
-    Query(params): Query<ConversationPanelQuery>,
-) -> impl IntoResponse {
-    let conn = state.db.lock().unwrap();
-    let id = canonical_conversation_id(&conn, params.id);
-    let info = queries::get_conversation_info(&conn, id);
+#[derive(Debug, Clone)]
+pub struct ConversationShellData {
+    pub conversation_id: i64,
+    pub contact_initial: String,
+    pub contact_name: String,
+    pub is_group: bool,
+    pub primary_contact_id: Option<i64>,
+    pub participants: Vec<String>,
+    pub participant_summary: String,
+    pub has_photo: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConversationInsightsData {
+    pub attachment_count: i64,
+    pub contribution_graph: ContributionGraph,
+    pub avg_their_response: Option<String>,
+    pub avg_my_response: Option<String>,
+    pub avg_time_between: Option<String>,
+    pub conversation_started_at: Option<String>,
+    pub conversation_started_ago: Option<String>,
+    pub group_participant_stats: Vec<GroupParticipantStatView>,
+    pub reaction_highlights: Vec<GroupReactionHighlightView>,
+    pub hourly_stats: Vec<HourlyStatView>,
+}
+
+#[derive(Template)]
+#[template(path = "partials/conversation_insights.html")]
+struct ConversationInsightsTemplate {
+    conversation_id: i64,
+    is_group: bool,
+    primary_contact_id: Option<i64>,
+    participants: Vec<String>,
+    insights: ConversationInsightsData,
+}
+
+const CONVERSATION_INSIGHTS_TTL: Duration = Duration::from_secs(45);
+
+pub fn build_conversation_shell(
+    conn: &rusqlite::Connection,
+    conversation_id: i64,
+) -> ConversationShellData {
+    let info = queries::get_conversation_info(conn, conversation_id);
     let primary_contact_id =
-        queries::get_primary_contact_id_for_conversation(&conn, id).unwrap_or_default();
+        queries::get_primary_contact_id_for_conversation(conn, conversation_id).unwrap_or_default();
 
     let (contact_name, is_group, participants, has_photo) = match info {
         Ok(info) => {
@@ -601,20 +628,37 @@ pub async fn conversation_panel_partial(
         Err(_) => ("Unknown".to_string(), false, vec![], false),
     };
 
-    let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
-    let participant_summary = format_group_participant_summary(&participants);
-    let contribution_graph = build_contribution_graph(&conn, id, is_group);
-    let conversation_started_unix =
-        queries::get_conversation_first_message_unix(&conn, id).unwrap_or_default();
+    ConversationShellData {
+        conversation_id,
+        contact_initial: display_initial(&contact_name),
+        contact_name,
+        is_group,
+        primary_contact_id,
+        participant_summary: format_group_participant_summary(&participants),
+        participants,
+        has_photo,
+    }
+}
 
-    let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
-        let avg = queries::get_avg_time_between_messages(&conn, id)
+fn build_conversation_insights_data(
+    conn: &rusqlite::Connection,
+    shell: &ConversationShellData,
+) -> ConversationInsightsData {
+    let attachment_count =
+        queries::count_conversation_attachments(conn, shell.conversation_id).unwrap_or(0);
+    let contribution_graph = build_contribution_graph(conn, shell.conversation_id, shell.is_group);
+    let conversation_started_unix =
+        queries::get_conversation_first_message_unix(conn, shell.conversation_id)
+            .unwrap_or_default();
+
+    let (avg_their_response, avg_my_response, avg_time_between) = if shell.is_group {
+        let avg = queries::get_avg_time_between_messages(conn, shell.conversation_id)
             .ok()
             .flatten()
             .map(format_duration);
         (None, None, avg)
     } else {
-        let times = queries::get_avg_response_times(&conn, id).ok();
+        let times = queries::get_avg_response_times(conn, shell.conversation_id).ok();
         let their = times
             .as_ref()
             .and_then(|t| t.avg_their_response)
@@ -626,25 +670,17 @@ pub async fn conversation_panel_partial(
         (their, mine, None)
     };
 
-    let (group_participant_stats, reaction_highlights, hourly_stats) = if is_group {
-        let stats = build_group_participant_stat_views(&conn, id);
-        let reaction_highlights = build_group_reaction_highlights(&conn, id);
+    let (group_participant_stats, reaction_highlights, hourly_stats) = if shell.is_group {
+        let stats = build_group_participant_stat_views(conn, shell.conversation_id);
+        let reaction_highlights = build_group_reaction_highlights(conn, shell.conversation_id);
         (stats, reaction_highlights, vec![])
     } else {
-        let hourly = build_hourly_stat_views(&conn, id);
+        let hourly = build_hourly_stat_views(conn, shell.conversation_id);
         (vec![], vec![], hourly)
     };
 
-    let t = ConversationPanelTemplate {
-        conversation_id: id,
-        contact_initial: display_initial(&contact_name),
-        contact_name,
-        is_group,
-        primary_contact_id,
-        participants,
-        participant_summary,
+    ConversationInsightsData {
         attachment_count,
-        has_photo,
         contribution_graph,
         avg_their_response,
         avg_my_response,
@@ -652,10 +688,93 @@ pub async fn conversation_panel_partial(
         conversation_started_at: conversation_started_unix.and_then(format_conversation_start),
         conversation_started_ago: conversation_started_unix
             .and_then(format_conversation_start_elapsed),
-        focus_message_id: params.focus,
         group_participant_stats,
         reaction_highlights,
         hourly_stats,
+    }
+}
+
+fn get_cached_conversation_insights(
+    state: &AppState,
+    conversation_id: i64,
+) -> Option<ConversationInsightsData> {
+    let now = Instant::now();
+    state
+        .conversation_insights_cache
+        .read()
+        .unwrap()
+        .get(&conversation_id)
+        .filter(|entry| entry.expires_at > now)
+        .map(|entry| entry.data.clone())
+}
+
+fn cache_conversation_insights(
+    state: &AppState,
+    conversation_id: i64,
+    data: &ConversationInsightsData,
+) {
+    state.conversation_insights_cache.write().unwrap().insert(
+        conversation_id,
+        crate::state::CachedConversationInsights {
+            data: data.clone(),
+            expires_at: Instant::now() + CONVERSATION_INSIGHTS_TTL,
+        },
+    );
+}
+
+pub async fn conversation_panel_partial(
+    State(state): State<AppState>,
+    Query(params): Query<ConversationPanelQuery>,
+) -> impl IntoResponse {
+    let conn = state.db.lock().unwrap();
+    let id = canonical_conversation_id(&conn, params.id);
+    let shell = build_conversation_shell(&conn, id);
+
+    let t = ConversationPanelTemplate {
+        conversation_id: shell.conversation_id,
+        contact_initial: shell.contact_initial,
+        contact_name: shell.contact_name,
+        is_group: shell.is_group,
+        primary_contact_id: shell.primary_contact_id,
+        participant_summary: shell.participant_summary,
+        attachment_count: None,
+        has_photo: shell.has_photo,
+        focus_message_id: params.focus,
+    };
+    Html(t.render().unwrap_or_default())
+}
+
+pub async fn conversation_insights_partial(
+    State(state): State<AppState>,
+    Query(params): Query<ConversationPanelQuery>,
+) -> impl IntoResponse {
+    let id = {
+        let conn = state.db.lock().unwrap();
+        canonical_conversation_id(&conn, params.id)
+    };
+
+    let shell = {
+        let conn = state.db.lock().unwrap();
+        build_conversation_shell(&conn, id)
+    };
+
+    let insights = if let Some(cached) = get_cached_conversation_insights(&state, id) {
+        cached
+    } else {
+        let computed = {
+            let conn = state.db.lock().unwrap();
+            build_conversation_insights_data(&conn, &shell)
+        };
+        cache_conversation_insights(&state, id, &computed);
+        computed
+    };
+
+    let t = ConversationInsightsTemplate {
+        conversation_id: id,
+        is_group: shell.is_group,
+        primary_contact_id: shell.primary_contact_id,
+        participants: shell.participants,
+        insights,
     };
     Html(t.render().unwrap_or_default())
 }

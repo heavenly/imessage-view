@@ -7,13 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::db::queries;
 use crate::state::AppState;
 
-use super::format::{
-    display_initial, format_contact_label, format_contact_value, format_conversation_name,
-    format_group_participant_summary,
-};
-use super::partials::{
-    ContributionGraph, GroupParticipantStatView, GroupReactionHighlightView, HourlyStatView,
-};
+use super::format::{display_initial, format_contact_label, format_contact_value};
+use super::partials::build_conversation_shell;
 
 fn canonical_conversation_id(conn: &rusqlite::Connection, conversation_id: i64) -> i64 {
     queries::resolve_canonical_conversation_id(conn, conversation_id)
@@ -134,20 +129,10 @@ struct ConversationTemplate {
     contact_name: String,
     is_group: bool,
     primary_contact_id: Option<i64>,
-    participants: Vec<String>,
     participant_summary: String,
-    attachment_count: i64,
+    attachment_count: Option<i64>,
     has_photo: bool,
-    contribution_graph: ContributionGraph,
-    avg_their_response: Option<String>,
-    avg_my_response: Option<String>,
-    avg_time_between: Option<String>,
-    conversation_started_at: Option<String>,
-    conversation_started_ago: Option<String>,
     focus_message_id: Option<i64>,
-    group_participant_stats: Vec<GroupParticipantStatView>,
-    reaction_highlights: Vec<GroupReactionHighlightView>,
-    hourly_stats: Vec<HourlyStatView>,
 }
 
 #[derive(Deserialize)]
@@ -170,80 +155,19 @@ pub async fn conversation(
         return Redirect::to(&url).into_response();
     }
 
-    let info = queries::get_conversation_info(&conn, canonical_id);
-    let primary_contact_id =
-        queries::get_primary_contact_id_for_conversation(&conn, canonical_id).unwrap_or_default();
-
-    let (contact_name, is_group, participants, has_photo) = match info {
-        Ok(info) => {
-            let name =
-                format_conversation_name(info.display_name.as_deref(), &info.participant_names);
-            let participants = super::format::format_contact_list(&info.participant_names);
-            (name, info.is_group, participants, info.has_photo)
-        }
-        Err(_) => ("Unknown".to_string(), false, vec![], false),
-    };
-
-    let attachment_count =
-        queries::count_conversation_attachments(&conn, canonical_id).unwrap_or(0);
-    let participant_summary = format_group_participant_summary(&participants);
-    let contribution_graph =
-        super::partials::build_contribution_graph(&conn, canonical_id, is_group);
-    let conversation_started_unix =
-        queries::get_conversation_first_message_unix(&conn, canonical_id).unwrap_or_default();
-
-    let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
-        let avg = queries::get_avg_time_between_messages(&conn, canonical_id)
-            .ok()
-            .flatten()
-            .map(super::partials::format_duration);
-        (None, None, avg)
-    } else {
-        let times = queries::get_avg_response_times(&conn, canonical_id).ok();
-        let their = times
-            .as_ref()
-            .and_then(|t| t.avg_their_response)
-            .map(super::partials::format_duration);
-        let mine = times
-            .as_ref()
-            .and_then(|t| t.avg_my_response)
-            .map(super::partials::format_duration);
-        (their, mine, None)
-    };
-
-    let (group_participant_stats, reaction_highlights, hourly_stats) = if is_group {
-        let stats = super::partials::build_group_participant_stat_views(&conn, canonical_id);
-        let reaction_highlights =
-            super::partials::build_group_reaction_highlights(&conn, canonical_id);
-        (stats, reaction_highlights, vec![])
-    } else {
-        let hourly = super::partials::build_hourly_stat_views(&conn, canonical_id);
-        (vec![], vec![], hourly)
-    };
+    let shell = build_conversation_shell(&conn, canonical_id);
 
     let t = ConversationTemplate {
-        title: format!("Conversation with {contact_name}"),
+        title: format!("Conversation with {}", shell.contact_name),
         conversation_id: canonical_id,
-        contact_initial: display_initial(&contact_name),
-        contact_name,
-        is_group,
-        primary_contact_id,
-        participants,
-        participant_summary,
-        attachment_count,
-        has_photo,
-        contribution_graph,
-        avg_their_response,
-        avg_my_response,
-        avg_time_between,
-        conversation_started_at: conversation_started_unix
-            .and_then(super::partials::format_conversation_start),
-        conversation_started_ago: conversation_started_unix
-            .and_then(super::partials::format_conversation_start_elapsed),
+        contact_initial: shell.contact_initial,
+        contact_name: shell.contact_name,
+        is_group: shell.is_group,
+        primary_contact_id: shell.primary_contact_id,
+        participant_summary: shell.participant_summary,
+        attachment_count: None,
+        has_photo: shell.has_photo,
         focus_message_id: params.focus,
-        group_participant_stats,
-        reaction_highlights,
-        hourly_stats,
     };
     Html(t.render().unwrap_or_default()).into_response()
 }

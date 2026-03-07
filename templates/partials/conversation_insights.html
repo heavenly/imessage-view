@@ -1,0 +1,187 @@
+<p id="conversation-header-status" class="im-chat-header-status" hx-swap-oob="true">
+    {% if is_group %}
+    {% if let Some(avg) = insights.avg_time_between %}~{{ avg }} between messages{% endif %}
+    {% else %}
+    {% if let Some(avg) = insights.avg_their_response %}Responds in ~{{ avg }}{% endif %}
+    {% endif %}
+</p>
+
+<span id="conversation-attachment-count" class="im-tab-count" hx-swap-oob="true">{{ insights.attachment_count }}</span>
+
+<div id="conversation-sidebar-content" class="im-sidebar-content" hx-swap-oob="true">
+    {% if is_group %}
+    <div class="im-sidebar-section">
+        <div class="im-sidebar-section-title">Participants</div>
+        <ul class="im-participant-list">
+            {% for p in insights.group_participant_stats %}
+            {% if let Some(cid) = p.contact_id %}
+            <li>
+                <a href="/contacts/{{ cid }}" class="im-participant-item" style="text-decoration: none; color: inherit;">
+                    <div class="im-avatar im-avatar--small">
+                        {% if p.has_photo %}
+                        <img src="/contacts/{{ cid }}/photo" alt="" onload="this.classList.add('loaded')">
+                        {% else %}
+                        <span class="im-avatar-initial">{{ p.initial }}</span>
+                        {% endif %}
+                    </div>
+                    <div class="im-participant-info">
+                        <span class="im-participant-name">{{ p.name }}</span>
+                        <span class="im-participant-stats">{{ p.message_count }} msgs · {{ p.percentage }}%</span>
+                    </div>
+                </a>
+            </li>
+            {% else %}
+            <li class="im-participant-item">
+                <div class="im-avatar im-avatar--small">
+                    <span class="im-avatar-initial">{{ p.initial }}</span>
+                </div>
+                <div class="im-participant-info">
+                    <span class="im-participant-name">{{ p.name }}</span>
+                    <span class="im-participant-stats">{{ p.message_count }} msgs · {{ p.percentage }}%</span>
+                </div>
+            </li>
+            {% endif %}
+            {% endfor %}
+        </ul>
+    </div>
+    {% if !insights.reaction_highlights.is_empty() %}
+    <div class="im-sidebar-section">
+        <div class="im-sidebar-section-title">Top Reactions</div>
+        <div class="im-reaction-highlight-list">
+            {% for item in insights.reaction_highlights %}
+            <a class="im-reaction-highlight-item"
+               href="/conversations/{{ conversation_id }}?focus={{ item.message_id }}"
+               hx-get="/partials/messages?conversation_id={{ conversation_id }}&amp;focus={{ item.message_id }}"
+               hx-target="#tab-content"
+               hx-swap="innerHTML"
+               hx-push-url="/conversations/{{ conversation_id }}?focus={{ item.message_id }}"
+               onclick="activateConversationTab('messages')">
+                <div class="im-reaction-highlight-top">
+                    <span class="im-reaction-highlight-title"><span class="im-reaction-highlight-glyph">{{ item.glyph }}</span>{{ item.title }}</span>
+                    <span class="im-reaction-highlight-metric">{{ item.metric }}</span>
+                </div>
+                <p class="im-reaction-highlight-preview">{{ item.preview }}</p>
+                <span class="im-reaction-highlight-sender">{{ item.sender_name }}</span>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% else %}
+    {% if insights.avg_their_response.is_some() || insights.avg_my_response.is_some() %}
+    <div class="im-sidebar-section">
+        <div class="im-sidebar-section-title">Response Times</div>
+        <div class="im-sidebar-stats-grid">
+            {% if let Some(avg) = insights.avg_their_response %}
+            <div class="im-sidebar-stat">
+                <span class="im-sidebar-stat-value">~{{ avg }}</span>
+                <span class="im-sidebar-stat-label">Their avg reply</span>
+            </div>
+            {% endif %}
+            {% if let Some(avg) = insights.avg_my_response %}
+            <div class="im-sidebar-stat">
+                <span class="im-sidebar-stat-value">~{{ avg }}</span>
+                <span class="im-sidebar-stat-label">Your avg reply</span>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+    {% if !insights.hourly_stats.is_empty() %}
+    <div class="im-sidebar-section">
+        <div class="im-sidebar-section-title">Active Hours</div>
+        <div class="im-hourly-chart">
+            {% for h in insights.hourly_stats %}
+            <div class="im-chart-col" title="{{ h.label }}: {{ h.count }} messages">
+                <div class="im-chart-bar{% if h.is_peak %} im-chart-bar--peak{% endif %}" style="height: {{ h.pct }}%"></div>
+                {% if h.hour == 0 || h.hour == 6 || h.hour == 12 || h.hour == 18 %}
+                <span class="im-chart-label">{{ h.label }}</span>
+                {% else %}
+                <span class="im-chart-label"></span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+    {% endif %}
+</div>
+
+<div id="contact-info-modal-insights" hx-swap-oob="true">
+    <div class="contribution-graph">
+        <p class="contribution-graph-label">Last 90 days</p>
+        <div class="contribution-axis contribution-axis--months" style="--contribution-weeks: {{ insights.contribution_graph.week_count }};">
+            <div class="contribution-axis-spacer"></div>
+            {% for week in insights.contribution_graph.weeks %}
+            <div class="contribution-month-label">{% if let Some(label) = week.month_label %}{{ label }}{% endif %}</div>
+            {% endfor %}
+        </div>
+        <div class="contribution-chart" style="--contribution-weeks: {{ insights.contribution_graph.week_count }};">
+            <div class="contribution-weekday-axis">
+                {% for label in insights.contribution_graph.weekday_labels %}
+                <div class="contribution-weekday-label">{{ label }}</div>
+                {% endfor %}
+            </div>
+            <div class="contribution-weeks" style="--contribution-weeks: {{ insights.contribution_graph.week_count }};">
+                {% for week in insights.contribution_graph.weeks %}
+                <div class="contribution-week">
+                    {% for day in week.days %}
+                    {% if let Some(day) = day %}
+                    {% if is_group %}
+                    <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent + day.received }} messages"></div>
+                    {% else %}
+                    <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent }} sent, {{ day.received }} received"></div>
+                    {% endif %}
+                    {% else %}
+                    <div class="contribution-cell contribution-cell--empty"></div>
+                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% if let Some(started_at) = insights.conversation_started_at %}
+    <div class="im-contact-modal-section">
+        <div class="im-contact-modal-section-header">
+            <p class="im-contact-modal-section-label">Chat started</p>
+            {% if let Some(started_ago) = insights.conversation_started_ago %}
+            <span class="im-contact-modal-section-chip">{{ started_ago }}</span>
+            {% endif %}
+        </div>
+        <p class="im-contact-modal-section-value">{{ started_at }}</p>
+    </div>
+    {% endif %}
+    {% if is_group %}
+    {% if let Some(avg) = insights.avg_time_between %}
+    <div class="im-contact-modal-stats">
+        <div class="im-contact-modal-stat">
+            <span class="im-stat-value">~{{ avg }}</span>
+            <span class="im-stat-label">Avg. time between messages</span>
+        </div>
+    </div>
+    {% endif %}
+    <p class="im-contact-modal-detail">{{ participants.len() }} participants</p>
+    <p class="im-contact-modal-participants">{{ participants.join(", ") }}</p>
+    {% else %}
+    {% if insights.avg_their_response.is_some() || insights.avg_my_response.is_some() %}
+    <div class="im-contact-modal-stats">
+        {% if let Some(avg) = insights.avg_their_response %}
+        <div class="im-contact-modal-stat">
+            <span class="im-stat-value">~{{ avg }}</span>
+            <span class="im-stat-label">Their avg. response</span>
+        </div>
+        {% endif %}
+        {% if let Some(avg) = insights.avg_my_response %}
+        <div class="im-contact-modal-stat">
+            <span class="im-stat-value">~{{ avg }}</span>
+            <span class="im-stat-label">Your avg. response</span>
+        </div>
+        {% endif %}
+    </div>
+    {% endif %}
+    {% if let Some(contact_id) = primary_contact_id %}
+    <p class="im-contact-modal-detail"><a href="/contacts/{{ contact_id }}">Open contact insights</a></p>
+    {% endif %}
+    {% endif %}
+</div>

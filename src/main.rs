@@ -7,7 +7,6 @@ use std::sync::{Arc, Mutex};
 mod db;
 mod error;
 mod import;
-mod models;
 mod recovery;
 mod search;
 mod state;
@@ -52,12 +51,8 @@ fn serve() -> anyhow::Result<()> {
     }
 
     let conn = Connection::open(&db_path)?;
-    let home = std::env::var("HOME").unwrap_or_default();
-    let attachment_root = PathBuf::from(home).join("Library/Messages/Attachments");
-
     let state = state::AppState {
         db: Arc::new(Mutex::new(conn)),
-        attachment_root,
     };
 
     let app = web::router().with_state(state);

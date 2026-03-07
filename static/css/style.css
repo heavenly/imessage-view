@@ -318,19 +318,6 @@ body {
     margin-bottom: 12px;
 }
 
-.im-back-btn {
-    text-decoration: none;
-    color: var(--im-accent);
-    font-size: 20px;
-    padding: 4px;
-    border-radius: 50%;
-    transition: background 0.15s;
-}
-
-.im-back-btn:hover {
-    background: var(--im-bg-tertiary);
-}
-
 /* Tab Bar */
 .im-tab-bar {
     display: flex;

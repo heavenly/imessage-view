@@ -67,28 +67,35 @@ fn load_contacts_from_db(
 ) -> anyhow::Result<()> {
     let conn = Connection::open_with_flags(db_path, OpenFlags::SQLITE_OPEN_READ_ONLY)?;
 
+    let external_data_dir = db_path
+        .parent()
+        .map(|p| p.join(".AddressBook-v22_SUPPORT/_EXTERNAL_DATA"));
+
     let mut name_map: HashMap<i64, String> = HashMap::new();
     let mut photo_map: HashMap<i64, Vec<u8>> = HashMap::new();
     {
-        let mut stmt = conn
-            .prepare("SELECT Z_PK, ZFIRSTNAME, ZLASTNAME, ZTHUMBNAILIMAGEDATA FROM ZABCDRECORD")?;
+        let mut stmt = conn.prepare(
+            "SELECT Z_PK, ZFIRSTNAME, ZLASTNAME, ZTHUMBNAILIMAGEDATA, ZIMAGEDATA FROM ZABCDRECORD",
+        )?;
         let rows = stmt.query_map([], |row| {
             let pk: i64 = row.get(0)?;
             let first: Option<String> = row.get(1)?;
             let last: Option<String> = row.get(2)?;
-            let photo: Option<Vec<u8>> = row.get(3)?;
-            Ok((pk, first, last, photo))
+            let thumbnail: Option<Vec<u8>> = row.get(3)?;
+            let full_image: Option<Vec<u8>> = row.get(4)?;
+            Ok((pk, first, last, thumbnail, full_image))
         })?;
         for row in rows.flatten() {
-            let (pk, first, last, photo) = row;
+            let (pk, first, last, thumbnail, full_image) = row;
             let display = format_name(first.as_deref(), last.as_deref());
             if !display.is_empty() {
                 name_map.insert(pk, display);
             }
-            if let Some(bytes) = photo {
-                if let Some(image_data) = extract_image_data(bytes) {
-                    photo_map.insert(pk, image_data);
-                }
+            let image = thumbnail
+                .and_then(|b| extract_image_data(b, &external_data_dir))
+                .or_else(|| full_image.and_then(|b| extract_image_data(b, &external_data_dir)));
+            if let Some(image_data) = image {
+                photo_map.insert(pk, image_data);
             }
         }
     }
@@ -148,13 +155,29 @@ fn load_contacts_from_db(
     Ok(())
 }
 
-fn extract_image_data(raw: Vec<u8>) -> Option<Vec<u8>> {
+fn extract_image_data(raw: Vec<u8>, external_data_dir: &Option<PathBuf>) -> Option<Vec<u8>> {
     if raw.is_empty() {
         return None;
     }
     match raw[0] {
         0x01 if raw.len() > 1 => Some(raw[1..].to_vec()),
-        0x02 => None,
+        0x02 if raw.len() > 1 => {
+            let uuid_str = String::from_utf8_lossy(&raw[1..])
+                .trim_matches(|c: char| c.is_whitespace() || c == '\0')
+                .to_string();
+            if uuid_str.is_empty() {
+                return None;
+            }
+            if let Some(dir) = external_data_dir {
+                let path = dir.join(&uuid_str);
+                match std::fs::read(&path) {
+                    Ok(bytes) if !bytes.is_empty() => Some(bytes),
+                    _ => None,
+                }
+            } else {
+                None
+            }
+        }
         _ => Some(raw),
     }
 }

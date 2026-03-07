@@ -21,6 +21,31 @@ pub struct ContributionDay {
     pub level: u8,
 }
 
+pub fn format_duration(seconds: f64) -> String {
+    let s = seconds.round() as i64;
+    if s < 60 {
+        "< 1m".to_string()
+    } else if s < 3600 {
+        format!("{}m", s / 60)
+    } else if s < 86400 {
+        let h = s / 3600;
+        let m = (s % 3600) / 60;
+        if m == 0 {
+            format!("{}h", h)
+        } else {
+            format!("{}h {}m", h, m)
+        }
+    } else {
+        let d = s / 86400;
+        let h = (s % 86400) / 3600;
+        if h == 0 {
+            format!("{}d", d)
+        } else {
+            format!("{}d {}h", d, h)
+        }
+    }
+}
+
 pub fn build_contribution_graph(
     conn: &rusqlite::Connection,
     conversation_id: i64,
@@ -75,6 +100,9 @@ struct ConversationPanelTemplate {
     attachment_count: i64,
     has_photo: bool,
     contribution_days: Vec<ContributionDay>,
+    avg_their_response: Option<String>,
+    avg_my_response: Option<String>,
+    avg_time_between: Option<String>,
 }
 
 pub async fn conversation_panel_partial(
@@ -106,6 +134,19 @@ pub async fn conversation_panel_partial(
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
     let contribution_days = build_contribution_graph(&conn, id);
 
+    let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
+        let avg = queries::get_avg_time_between_messages(&conn, id)
+            .ok()
+            .flatten()
+            .map(format_duration);
+        (None, None, avg)
+    } else {
+        let times = queries::get_avg_response_times(&conn, id).ok();
+        let their = times.as_ref().and_then(|t| t.avg_their_response).map(format_duration);
+        let mine = times.as_ref().and_then(|t| t.avg_my_response).map(format_duration);
+        (their, mine, None)
+    };
+
     let t = ConversationPanelTemplate {
         conversation_id: id,
         contact_name,
@@ -114,6 +155,9 @@ pub async fn conversation_panel_partial(
         attachment_count,
         has_photo,
         contribution_days,
+        avg_their_response,
+        avg_my_response,
+        avg_time_between,
     };
     Html(t.render().unwrap_or_default())
 }

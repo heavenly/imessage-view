@@ -130,6 +130,9 @@ struct ConversationTemplate {
     attachment_count: i64,
     has_photo: bool,
     contribution_days: Vec<ContributionDay>,
+    avg_their_response: Option<String>,
+    avg_my_response: Option<String>,
+    avg_time_between: Option<String>,
 }
 
 pub async fn conversation(
@@ -160,6 +163,19 @@ pub async fn conversation(
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
     let contribution_days = super::partials::build_contribution_graph(&conn, id);
 
+    let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
+        let avg = queries::get_avg_time_between_messages(&conn, id)
+            .ok()
+            .flatten()
+            .map(super::partials::format_duration);
+        (None, None, avg)
+    } else {
+        let times = queries::get_avg_response_times(&conn, id).ok();
+        let their = times.as_ref().and_then(|t| t.avg_their_response).map(super::partials::format_duration);
+        let mine = times.as_ref().and_then(|t| t.avg_my_response).map(super::partials::format_duration);
+        (their, mine, None)
+    };
+
     let t = ConversationTemplate {
         title: format!("Conversation with {contact_name}"),
         conversation_id: id,
@@ -169,6 +185,9 @@ pub async fn conversation(
         attachment_count,
         has_photo,
         contribution_days,
+        avg_their_response,
+        avg_my_response,
+        avg_time_between,
     };
     Html(t.render().unwrap_or_default())
 }

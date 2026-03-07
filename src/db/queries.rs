@@ -802,6 +802,74 @@ pub fn get_mutual_interaction_days(
     Ok(rows)
 }
 
+pub struct AvgResponseTimes {
+    pub avg_their_response: Option<f64>,
+    pub avg_my_response: Option<f64>,
+}
+
+/// For 1-1 conversations: compute average response times in both directions.
+/// Uses LAG window function to find consecutive message pairs where the sender changes.
+/// Excludes gaps > 172800 seconds (48 hours).
+pub fn get_avg_response_times(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<AvgResponseTimes> {
+    let sql = "
+        WITH ordered AS (
+            SELECT date_unix, is_from_me,
+                   LAG(date_unix) OVER (ORDER BY date_unix, id) AS prev_date,
+                   LAG(is_from_me) OVER (ORDER BY date_unix, id) AS prev_from_me
+            FROM messages
+            WHERE conversation_id = ?1
+        ),
+        gaps AS (
+            SELECT is_from_me, prev_from_me, (date_unix - prev_date) AS gap
+            FROM ordered
+            WHERE prev_date IS NOT NULL
+              AND is_from_me != prev_from_me
+              AND (date_unix - prev_date) > 0
+              AND (date_unix - prev_date) <= 172800
+        )
+        SELECT
+            AVG(CASE WHEN is_from_me = 0 AND prev_from_me = 1 THEN gap END),
+            AVG(CASE WHEN is_from_me = 1 AND prev_from_me = 0 THEN gap END)
+        FROM gaps
+    ";
+
+    let result = conn.query_row(sql, [conversation_id], |row| {
+        Ok(AvgResponseTimes {
+            avg_their_response: row.get(0)?,
+            avg_my_response: row.get(1)?,
+        })
+    })?;
+
+    Ok(result)
+}
+
+/// For group conversations: compute average time between consecutive messages.
+/// Excludes gaps > 172800 seconds (48 hours).
+pub fn get_avg_time_between_messages(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Option<f64>> {
+    let sql = "
+        WITH ordered AS (
+            SELECT date_unix,
+                   LAG(date_unix) OVER (ORDER BY date_unix, id) AS prev_date
+            FROM messages
+            WHERE conversation_id = ?1
+        )
+        SELECT AVG(date_unix - prev_date)
+        FROM ordered
+        WHERE prev_date IS NOT NULL
+          AND (date_unix - prev_date) > 0
+          AND (date_unix - prev_date) <= 172800
+    ";
+
+    let result: Option<f64> = conn.query_row(sql, [conversation_id], |row| row.get(0))?;
+    Ok(result)
+}
+
 pub fn get_conversation_photo(
     conn: &Connection,
     conversation_id: i64,

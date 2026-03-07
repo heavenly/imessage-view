@@ -12,8 +12,15 @@
                 <h2 class="im-chat-header-name">{{ contact_name }}</h2>
                 {% if is_group %}
                 <p class="im-chat-header-participants">{{ participants.join(", ") }}</p>
+                {% if let Some(avg) = avg_time_between %}
+                <p class="im-chat-header-status">~{{ avg }} between messages</p>
+                {% endif %}
+                {% else %}
+                {% if let Some(avg) = avg_their_response %}
+                <p class="im-chat-header-status">Responds in ~{{ avg }}</p>
                 {% else %}
                 <p class="im-chat-header-status"></p>
+                {% endif %}
                 {% endif %}
             </div>
         </button>
@@ -71,8 +78,33 @@
                 </div>
             </div>
             {% if is_group %}
+            {% if let Some(avg) = avg_time_between %}
+            <div class="im-contact-modal-stats">
+                <div class="im-contact-modal-stat">
+                    <span class="im-stat-value">~{{ avg }}</span>
+                    <span class="im-stat-label">Avg. time between messages</span>
+                </div>
+            </div>
+            {% endif %}
             <p class="im-contact-modal-detail">{{ participants.len() }} participants</p>
             <p class="im-contact-modal-participants">{{ participants.join(", ") }}</p>
+            {% else %}
+            {% if avg_their_response.is_some() || avg_my_response.is_some() %}
+            <div class="im-contact-modal-stats">
+                {% if let Some(avg) = avg_their_response %}
+                <div class="im-contact-modal-stat">
+                    <span class="im-stat-value">~{{ avg }}</span>
+                    <span class="im-stat-label">Their avg. response</span>
+                </div>
+                {% endif %}
+                {% if let Some(avg) = avg_my_response %}
+                <div class="im-contact-modal-stat">
+                    <span class="im-stat-value">~{{ avg }}</span>
+                    <span class="im-stat-label">Your avg. response</span>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
             {% endif %}
         </div>
     </div>

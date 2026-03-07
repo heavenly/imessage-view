@@ -200,12 +200,16 @@ struct MessageView {
     time_formatted: String,
     date_formatted: String,
     attachments: Vec<AttachmentView>,
+    sender_id: Option<i64>,
+    has_sender_photo: bool,
 }
 
 struct MessageGroup {
     is_from_me: bool,
     date_separator: Option<String>,
     messages: Vec<MessageView>,
+    sender_id: Option<i64>,
+    has_sender_photo: bool,
 }
 
 struct AttachmentView {
@@ -315,6 +319,8 @@ pub async fn messages_partial(
                 time_formatted,
                 date_formatted,
                 attachments,
+                sender_id: m.sender_id,
+                has_sender_photo: m.has_sender_photo,
             }
         })
         .collect();
@@ -354,6 +360,8 @@ pub async fn messages_partial(
             groups.push(MessageGroup {
                 is_from_me: msg.is_from_me,
                 date_separator,
+                sender_id: msg.sender_id,
+                has_sender_photo: msg.has_sender_photo,
                 messages: vec![msg],
             });
         } else {

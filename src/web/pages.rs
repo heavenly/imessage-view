@@ -516,3 +516,31 @@ pub async fn conversation_photo(
         _ => axum::http::StatusCode::NOT_FOUND.into_response(),
     }
 }
+
+pub async fn contact_photo(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+) -> impl IntoResponse {
+    let photo = {
+        let conn = state.db.lock().unwrap();
+        queries::get_contact_photo(&conn, id)
+    };
+
+    match photo {
+        Ok(Some(bytes)) => {
+            let content_type = if bytes.starts_with(b"\x89PNG") {
+                "image/png"
+            } else {
+                "image/jpeg"
+            };
+            (
+                axum::http::StatusCode::OK,
+                [(axum::http::header::CONTENT_TYPE, content_type),
+                 (axum::http::header::CACHE_CONTROL, "public, max-age=86400")],
+                bytes,
+            )
+                .into_response()
+        }
+        _ => axum::http::StatusCode::NOT_FOUND.into_response(),
+    }
+}

@@ -40,10 +40,16 @@
         <div class="im-message-group-inner">
             {% if !group.is_from_me && is_group %}
             <div class="im-message-avatar">
-                {% if let Some(name) = group.messages[0].sender_name %}
-                    {{ name.chars().next().unwrap_or('?') }}
+                {% if group.has_sender_photo %}
+                    {% if let Some(sid) = group.sender_id %}
+                    <img src="/contacts/{{ sid }}/photo" alt="" />
+                    {% endif %}
                 {% else %}
-                    ?
+                    {% if let Some(name) = group.messages[0].sender_name %}
+                        {{ name.chars().next().unwrap_or('?') }}
+                    {% else %}
+                        ?
+                    {% endif %}
                 {% endif %}
             </div>
             {% endif %}

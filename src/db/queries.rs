@@ -163,6 +163,8 @@ pub struct MessageRow {
     pub service: Option<String>,
     pub sender_name: Option<String>,
     pub has_attachments: bool,
+    pub sender_id: Option<i64>,
+    pub has_sender_photo: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -252,7 +254,9 @@ pub fn get_messages(
                 m.date_unix,
                 m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
-                m.has_attachments
+                m.has_attachments,
+                ct.id AS sender_id,
+                (ct.photo IS NOT NULL) AS has_sender_photo
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
@@ -272,6 +276,8 @@ pub fn get_messages(
                     service: row.get(4)?,
                     sender_name: row.get(5)?,
                     has_attachments: row.get(6)?,
+                    sender_id: row.get(7)?,
+                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
                 })
             },
         )?
@@ -304,7 +310,9 @@ pub fn get_messages_around(
     let mut stmt_before = conn.prepare(
         "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
-                m.has_attachments
+                m.has_attachments,
+                ct.id AS sender_id,
+                (ct.photo IS NOT NULL) AS has_sender_photo
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
@@ -324,6 +332,8 @@ pub fn get_messages_around(
                     service: row.get(4)?,
                     sender_name: row.get(5)?,
                     has_attachments: row.get(6)?,
+                    sender_id: row.get(7)?,
+                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
                 })
             },
         )?
@@ -337,7 +347,9 @@ pub fn get_messages_around(
     let mut stmt_after = conn.prepare(
         "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
-                m.has_attachments
+                m.has_attachments,
+                ct.id AS sender_id,
+                (ct.photo IS NOT NULL) AS has_sender_photo
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
@@ -357,6 +369,8 @@ pub fn get_messages_around(
                     service: row.get(4)?,
                     sender_name: row.get(5)?,
                     has_attachments: row.get(6)?,
+                    sender_id: row.get(7)?,
+                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
                 })
             },
         )?
@@ -369,7 +383,9 @@ pub fn get_messages_around(
     let target_msg: MessageRow = conn.query_row(
         "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
-                m.has_attachments
+                m.has_attachments,
+                ct.id AS sender_id,
+                (ct.photo IS NOT NULL) AS has_sender_photo
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.id = ?1",
@@ -383,6 +399,8 @@ pub fn get_messages_around(
                 service: row.get(4)?,
                 sender_name: row.get(5)?,
                 has_attachments: row.get(6)?,
+                sender_id: row.get(7)?,
+                has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
             })
         },
     )?;
@@ -419,7 +437,9 @@ pub fn get_messages_before(
     let mut stmt = conn.prepare(
         "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
-                m.has_attachments
+                m.has_attachments,
+                ct.id AS sender_id,
+                (ct.photo IS NOT NULL) AS has_sender_photo
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
@@ -440,6 +460,8 @@ pub fn get_messages_before(
                     service: row.get(4)?,
                     sender_name: row.get(5)?,
                     has_attachments: row.get(6)?,
+                    sender_id: row.get(7)?,
+                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
                 })
             },
         )?
@@ -463,7 +485,9 @@ pub fn get_messages_after(
     let mut stmt = conn.prepare(
         "SELECT m.id, m.body, m.is_from_me, m.date_unix, m.service,
                 COALESCE(ct.display_name, ct.handle) AS sender_name,
-                m.has_attachments
+                m.has_attachments,
+                ct.id AS sender_id,
+                (ct.photo IS NOT NULL) AS has_sender_photo
          FROM messages m
          LEFT JOIN contacts ct ON ct.id = m.sender_id
          WHERE m.conversation_id = ?1
@@ -484,6 +508,8 @@ pub fn get_messages_after(
                     service: row.get(4)?,
                     sender_name: row.get(5)?,
                     has_attachments: row.get(6)?,
+                    sender_id: row.get(7)?,
+                    has_sender_photo: row.get::<_, bool>(8).unwrap_or(false),
                 })
             },
         )?
@@ -1111,4 +1137,17 @@ pub fn get_conversation_photo(
 
         Ok(photo.map(ConversationPhoto::ContactBlob))
     }
+}
+
+pub fn get_contact_photo(conn: &Connection, contact_id: i64) -> anyhow::Result<Option<Vec<u8>>> {
+    use rusqlite::OptionalExtension;
+    let photo: Option<Vec<u8>> = conn
+        .query_row(
+            "SELECT photo FROM contacts WHERE id = ?1 AND photo IS NOT NULL",
+            [contact_id],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    Ok(photo)
 }

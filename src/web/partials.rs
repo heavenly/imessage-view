@@ -15,6 +15,49 @@ pub struct ConversationPanelQuery {
     pub id: i64,
 }
 
+#[derive(Debug, Clone)]
+pub struct ContributionDay {
+    pub date: String,
+    pub level: u8,
+}
+
+pub fn build_contribution_graph(
+    conn: &rusqlite::Connection,
+    conversation_id: i64,
+) -> Vec<ContributionDay> {
+    use std::collections::HashMap;
+    let rows = queries::get_mutual_interaction_days(conn, conversation_id, 90).unwrap_or_default();
+    let day_map: HashMap<String, &queries::MutualInteractionDay> =
+        rows.iter().map(|d| (d.date.clone(), d)).collect();
+
+    let today = chrono::Utc::now().date_naive();
+    let mut result = Vec::with_capacity(90);
+    for i in (0..90).rev() {
+        let date = today - chrono::Duration::days(i);
+        let date_str = date.format("%Y-%m-%d").to_string();
+        let level = match day_map.get(&date_str) {
+            Some(d) if d.sent > 0 && d.received > 0 => {
+                let total = d.sent + d.received;
+                if total >= 20 {
+                    4
+                } else if total >= 10 {
+                    3
+                } else if total >= 4 {
+                    2
+                } else {
+                    1
+                }
+            }
+            _ => 0,
+        };
+        result.push(ContributionDay {
+            date: date_str,
+            level,
+        });
+    }
+    result
+}
+
 #[derive(Template)]
 #[template(path = "partials/conversation_panel.html")]
 struct ConversationPanelTemplate {
@@ -24,6 +67,7 @@ struct ConversationPanelTemplate {
     participants: Vec<String>,
     attachment_count: i64,
     has_photo: bool,
+    contribution_days: Vec<ContributionDay>,
 }
 
 pub async fn conversation_panel_partial(
@@ -53,6 +97,7 @@ pub async fn conversation_panel_partial(
     };
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
+    let contribution_days = build_contribution_graph(&conn, id);
 
     let t = ConversationPanelTemplate {
         conversation_id: id,
@@ -61,6 +106,7 @@ pub async fn conversation_panel_partial(
         participants,
         attachment_count,
         has_photo,
+        contribution_days,
     };
     Html(t.render().unwrap_or_default())
 }

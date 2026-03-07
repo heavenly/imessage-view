@@ -62,6 +62,14 @@
                 {% endif %}
             </div>
             <h2 class="im-contact-modal-name">{{ contact_name }}</h2>
+            <div class="contribution-graph">
+                <p class="contribution-graph-label">Last 90 days</p>
+                <div class="contribution-grid">
+                    {% for day in contribution_days %}
+                    <div class="contribution-cell contribution-level-{{ day.level }}" title="{{ day.date }}"></div>
+                    {% endfor %}
+                </div>
+            </div>
             {% if is_group %}
             <p class="im-contact-modal-detail">{{ participants.len() }} participants</p>
             <p class="im-contact-modal-participants">{{ participants.join(", ") }}</p>

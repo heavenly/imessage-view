@@ -10,7 +10,7 @@
   --im-text-secondary: #8e8e93;
   --im-text-tertiary: #c7c7cc;
   --im-text-inverse: #ffffff;
-  --im-accent: #007aff;
+  --im-accent: #c54b99;
   --im-border: #d1d1d6;
   --im-divider: rgba(0,0,0,0.1);
   --im-green: #34c759;
@@ -1125,6 +1125,50 @@ body {
 /* Tab bar active underline: smooth color transition */
 .im-tab {
   transition: all 0.2s ease;
+}
+
+/* Contribution Graph */
+.contribution-graph {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.contribution-graph-label {
+  font-size: 11px;
+  color: var(--im-text-secondary);
+  margin: 0 0 6px 0;
+}
+
+.contribution-grid {
+  display: grid;
+  grid-template-columns: repeat(15, 1fr);
+  gap: 3px;
+}
+
+.contribution-cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: var(--im-bg-tertiary);
+}
+
+.contribution-level-0 {
+  background: var(--im-bg-tertiary);
+}
+
+.contribution-level-1 {
+  background: rgba(197, 75, 153, 0.25);
+}
+
+.contribution-level-2 {
+  background: rgba(197, 75, 153, 0.50);
+}
+
+.contribution-level-3 {
+  background: rgba(197, 75, 153, 0.75);
+}
+
+.contribution-level-4 {
+  background: var(--im-accent);
 }
 
 /* Accessibility: respect reduced motion preference */

@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::queries;
 use crate::state::AppState;
+use super::partials::ContributionDay;
 
 fn relative_time(unix: i64) -> String {
     let now = chrono::Utc::now().timestamp();
@@ -128,6 +129,7 @@ struct ConversationTemplate {
     participants: Vec<String>,
     attachment_count: i64,
     has_photo: bool,
+    contribution_days: Vec<ContributionDay>,
 }
 
 pub async fn conversation(
@@ -156,6 +158,7 @@ pub async fn conversation(
     };
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
+    let contribution_days = super::partials::build_contribution_graph(&conn, id);
 
     let t = ConversationTemplate {
         title: format!("Conversation with {contact_name}"),
@@ -165,6 +168,7 @@ pub async fn conversation(
         participants,
         attachment_count,
         has_photo,
+        contribution_days,
     };
     Html(t.render().unwrap_or_default())
 }

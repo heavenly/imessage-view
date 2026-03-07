@@ -765,6 +765,43 @@ pub enum ConversationPhoto {
     GroupFilePath(String),
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct MutualInteractionDay {
+    pub date: String,
+    pub sent: i64,
+    pub received: i64,
+}
+
+pub fn get_mutual_interaction_days(
+    conn: &Connection,
+    conversation_id: i64,
+    days: u32,
+) -> anyhow::Result<Vec<MutualInteractionDay>> {
+    let mut stmt = conn.prepare(
+        "SELECT strftime('%Y-%m-%d', date_unix, 'unixepoch') AS day,
+                SUM(CASE WHEN is_from_me = 1 THEN 1 ELSE 0 END) AS sent,
+                SUM(CASE WHEN is_from_me = 0 THEN 1 ELSE 0 END) AS received
+         FROM messages
+         WHERE conversation_id = ?1
+           AND date_unix >= CAST(strftime('%s', 'now', ?2) AS INTEGER)
+         GROUP BY day
+         ORDER BY day",
+    )?;
+
+    let offset_param = format!("-{days} days");
+    let rows = stmt
+        .query_map(rusqlite::params![conversation_id, offset_param], |row| {
+            Ok(MutualInteractionDay {
+                date: row.get(0)?,
+                sent: row.get(1)?,
+                received: row.get(2)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
 pub fn get_conversation_photo(
     conn: &Connection,
     conversation_id: i64,

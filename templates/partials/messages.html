@@ -25,18 +25,14 @@
     {% endif %}
     
     <div class="im-message-group {% if group.is_from_me %}im-message-group--sent{% else %}im-message-group--received{% endif %}">
+        {% if !group.is_from_me && is_group %}
+            {% if let Some(name) = group.messages[0].sender_name %}
+            <span class="im-sender-name">{{ name }}</span>
+            {% endif %}
+        {% endif %}
         {% for msg in group.messages %}
         <div class="im-message" id="msg-{{ msg.id }}">
             <div class="im-message-bubble">
-                {% if !group.is_from_me && is_group %}
-                    {% if let Some(name) = msg.sender_name %}
-                        {% if loop.first %}
-                        <span class="im-sender-name">{{ name }}</span>
-                        {% endif %}
-                    {% endif %}
-                {% endif %}
-
-                
                 {% if let Some(body) = msg.body %}
                 <p class="im-message-text">{{ body }}</p>
                 {% endif %}
@@ -67,8 +63,8 @@
                 </div>
                 {% endif %}
                 
-                <span class="im-message-time">{{ msg.time_formatted }}</span>
             </div>
+            <span class="im-message-time">{{ msg.time_formatted }}</span>
         </div>
         {% endfor %}
     </div>

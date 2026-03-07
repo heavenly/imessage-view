@@ -415,21 +415,22 @@ body {
 /* Individual Messages */
 .im-message {
     display: flex;
+    flex-direction: column;
     max-width: 70%;
 }
 
 .im-message-group--sent .im-message {
-    justify-content: flex-end;
+    align-items: flex-end;
 }
 
 .im-message-group--received .im-message {
-    justify-content: flex-start;
+    align-items: flex-start;
 }
 
 /* Message Bubbles */
 .im-message-bubble {
     position: relative;
-    padding: 10px 14px;
+    padding: 8px 14px;
     border-radius: 18px;
     font-size: 14px;
     line-height: 1.4;
@@ -448,48 +449,104 @@ body {
     color: var(--im-text-primary);
 }
 
-/* SENT: last message sharp bottom-right for tail */
-.im-message-group--sent .im-message:last-child .im-message-bubble {
-    border-bottom-right-radius: 4px;
+/* Bubble Tails — cutout technique (last message in group only) */
+
+/* SENT tail */
+.im-message-group--sent .im-message:last-of-type .im-message-bubble {
+    border-bottom-right-radius: 2px;
 }
 
-/* RECEIVED: last message sharp bottom-left for tail */
-.im-message-group--received .im-message:last-child .im-message-bubble {
-    border-bottom-left-radius: 4px;
-}
-
-/* Bubble Tails - only on last message in group */
-.im-message-group--sent .im-message:last-child .im-message-bubble::after {
+.im-message-group--sent .im-message:last-of-type .im-message-bubble::before {
     content: '';
     position: absolute;
     bottom: 0;
     right: -6px;
     width: 12px;
-    height: 18px;
+    height: 14px;
     background: var(--im-bubble-sent-bg);
-    border-bottom-left-radius: 16px;
-    z-index: -1;
+    border-bottom-left-radius: 10px;
 }
 
-.im-message-group--received .im-message:last-child .im-message-bubble::after {
+.im-message-group--sent .im-message:last-of-type .im-message-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: -6px;
+    width: 8px;
+    height: 14px;
+    background: var(--im-bg-primary);
+    border-bottom-left-radius: 8px;
+}
+
+/* RECEIVED tail */
+.im-message-group--received .im-message:last-of-type .im-message-bubble {
+    border-bottom-left-radius: 2px;
+}
+
+.im-message-group--received .im-message:last-of-type .im-message-bubble::before {
     content: '';
     position: absolute;
     bottom: 0;
     left: -6px;
     width: 12px;
-    height: 18px;
+    height: 14px;
     background: var(--im-bubble-received-bg);
-    border-bottom-right-radius: 16px;
-    z-index: -1;
+    border-bottom-right-radius: 10px;
 }
 
-/* Sender Name (for group chats) */
+.im-message-group--received .im-message:last-of-type .im-message-bubble::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: -6px;
+    width: 8px;
+    height: 14px;
+    background: var(--im-bg-primary);
+    border-bottom-right-radius: 8px;
+}
+
+/* Dynamic border radii for grouped messages */
+
+/* Sent: first message in multi-message group — sharp bottom-right */
+.im-message-group--sent .im-message:first-of-type:not(:last-of-type) .im-message-bubble {
+    border-bottom-right-radius: 4px;
+}
+
+/* Sent: middle messages — sharp top-right and bottom-right */
+.im-message-group--sent .im-message:not(:first-of-type):not(:last-of-type) .im-message-bubble {
+    border-top-right-radius: 4px;
+    border-bottom-right-radius: 4px;
+}
+
+/* Sent: last message (not solo) — sharp top-right (tail handles bottom-right) */
+.im-message-group--sent .im-message:last-of-type:not(:first-of-type) .im-message-bubble {
+    border-top-right-radius: 4px;
+}
+
+/* Received: first message in multi-message group — sharp bottom-left */
+.im-message-group--received .im-message:first-of-type:not(:last-of-type) .im-message-bubble {
+    border-bottom-left-radius: 4px;
+}
+
+/* Received: middle messages — sharp top-left and bottom-left */
+.im-message-group--received .im-message:not(:first-of-type):not(:last-of-type) .im-message-bubble {
+    border-top-left-radius: 4px;
+    border-bottom-left-radius: 4px;
+}
+
+/* Received: last message (not solo) — sharp top-left (tail handles bottom-left) */
+.im-message-group--received .im-message:last-of-type:not(:first-of-type) .im-message-bubble {
+    border-top-left-radius: 4px;
+}
+
+/* Sender Name — positioned outside and above the bubble group */
 .im-sender-name {
     display: block;
     font-size: 11px;
     font-weight: 600;
-    margin-bottom: 4px;
-    opacity: 0.7;
+    color: var(--im-text-secondary);
+    margin-bottom: 2px;
+    padding: 0 14px;
 }
 
 /* Message Text */
@@ -498,17 +555,26 @@ body {
     white-space: pre-wrap;
 }
 
-/* Message Time */
+/* Message Time — positioned outside bubble, below the message group */
 .im-message-time {
-    display: block;
+    display: none;
     font-size: 11px;
+    color: var(--im-text-secondary);
     margin-top: 4px;
-    opacity: 0.7;
-    text-align: right;
+    padding: 0 4px;
+    align-self: stretch;
 }
 
-.im-message-group .im-message:not(:last-child) .im-message-time {
-    display: none;
+.im-message-group .im-message:last-of-type .im-message-time {
+    display: block;
+}
+
+.im-message-group--sent .im-message-time {
+    text-align: left;
+}
+
+.im-message-group--received .im-message-time {
+    text-align: left;
 }
 
 /* Date Separators */
@@ -1480,6 +1546,31 @@ body {
   text-align: center;
   color: var(--im-text-secondary);
   font-size: 14px;
+}
+
+/* Custom slim scrollbars */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--im-text-tertiary);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--im-text-secondary);
+}
+
+/* Firefox slim scrollbars */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--im-text-tertiary) transparent;
 }
 
 /* Accessibility: respect reduced motion preference */

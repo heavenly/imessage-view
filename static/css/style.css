@@ -398,18 +398,52 @@ body {
 
 /* Message Groups */
 .im-message-group {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
     margin-bottom: 12px;
 }
 
-.im-message-group--sent {
+.im-message-group-inner {
+    display: flex;
+    align-items: flex-end;
+    gap: 6px;
+}
+
+.im-message-group--sent .im-message-group-inner {
+    justify-content: flex-end;
+}
+
+.im-message-group--received .im-message-group-inner {
+    justify-content: flex-start;
+}
+
+.im-message-column {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.im-message-group--sent .im-message-column {
     align-items: flex-end;
 }
 
-.im-message-group--received {
+.im-message-group--received .im-message-column {
     align-items: flex-start;
+}
+
+/* Message Avatar — small circle next to received group messages */
+.im-message-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--im-bg-tertiary);
+    color: var(--im-text-secondary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 600;
+    flex-shrink: 0;
+    margin-bottom: 2px;
 }
 
 /* Individual Messages */
@@ -546,7 +580,7 @@ body {
     font-weight: 600;
     color: var(--im-text-secondary);
     margin-bottom: 2px;
-    padding: 0 14px;
+    padding: 0 4px;
 }
 
 /* Message Text */

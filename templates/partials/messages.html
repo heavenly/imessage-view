@@ -37,48 +37,61 @@
     {% endif %}
     
     <div class="im-message-group {% if group.is_from_me %}im-message-group--sent{% else %}im-message-group--received{% endif %}">
-        {% if !group.is_from_me && is_group %}
-            {% if let Some(name) = group.messages[0].sender_name %}
-            <span class="im-sender-name">{{ name }}</span>
-            {% endif %}
-        {% endif %}
-        {% for msg in group.messages %}
-        <div class="im-message{% if let Some(fid) = focus_id %}{% if *fid == msg.id %} im-message--focused{% endif %}{% endif %}" id="msg-{{ msg.id }}">
-            <div class="im-message-bubble">
-                {% if let Some(body) = msg.body %}
-                <p class="im-message-text">{{ body }}</p>
+        <div class="im-message-group-inner">
+            {% if !group.is_from_me && is_group %}
+            <div class="im-message-avatar">
+                {% if let Some(name) = group.messages[0].sender_name %}
+                    {{ name.chars().next().unwrap_or('?') }}
+                {% else %}
+                    ?
                 {% endif %}
-                
-                {% if msg.has_attachments %}
-                <div class="im-attachments">
-                    {% for att in msg.attachments %}
-                    <div class="im-attachment">
-                        {% if let Some(mime) = att.mime_type %}
-                            {% if mime.starts_with("image/") %}
-                            <div class="im-attachment-image">
-                                <img src="/attachments/download/{{ att.id }}" alt="" loading="lazy">
-                            </div>
-                            {% else %}
-                            <a href="/attachments/download/{{ att.id }}" class="im-attachment-file">
-                                <span class="im-attachment-icon">📎</span>
-                                <span class="im-attachment-name">
-                                    {% if let Some(tname) = att.transfer_name %}{{ tname }}{% else %}Attachment{% endif %}
-                                </span>
-                                {% if let Some(bytes) = att.total_bytes %}
-                                <span class="im-attachment-size">{{ bytes }} bytes</span>
-                                {% endif %}
-                            </a>
-                            {% endif %}
-                        {% endif %}
-                    </div>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                
             </div>
-            <span class="im-message-time">{{ msg.time_formatted }}</span>
+            {% endif %}
+            <div class="im-message-column">
+                {% if !group.is_from_me && is_group %}
+                    {% if let Some(name) = group.messages[0].sender_name %}
+                    <span class="im-sender-name">{{ name }}</span>
+                    {% endif %}
+                {% endif %}
+                {% for msg in group.messages %}
+                <div class="im-message{% if let Some(fid) = focus_id %}{% if *fid == msg.id %} im-message--focused{% endif %}{% endif %}" id="msg-{{ msg.id }}">
+                    <div class="im-message-bubble">
+                        {% if let Some(body) = msg.body %}
+                        <p class="im-message-text">{{ body }}</p>
+                        {% endif %}
+                        
+                        {% if msg.has_attachments %}
+                        <div class="im-attachments">
+                            {% for att in msg.attachments %}
+                            <div class="im-attachment">
+                                {% if let Some(mime) = att.mime_type %}
+                                    {% if mime.starts_with("image/") %}
+                                    <div class="im-attachment-image">
+                                        <img src="/attachments/download/{{ att.id }}" alt="" loading="lazy">
+                                    </div>
+                                    {% else %}
+                                    <a href="/attachments/download/{{ att.id }}" class="im-attachment-file">
+                                        <span class="im-attachment-icon">📎</span>
+                                        <span class="im-attachment-name">
+                                            {% if let Some(tname) = att.transfer_name %}{{ tname }}{% else %}Attachment{% endif %}
+                                        </span>
+                                        {% if let Some(bytes) = att.total_bytes %}
+                                        <span class="im-attachment-size">{{ bytes }} bytes</span>
+                                        {% endif %}
+                                    </a>
+                                    {% endif %}
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        
+                    </div>
+                    <span class="im-message-time">{{ msg.time_formatted }}</span>
+                </div>
+                {% endfor %}
+            </div>
         </div>
-        {% endfor %}
     </div>
 {% endfor %}
 

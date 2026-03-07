@@ -96,9 +96,14 @@ body {
     border: none;
     border-radius: 10px;
     background: var(--im-bg-tertiary);
+    color: var(--im-text-primary);
     font-size: 13px;
     outline: none;
     transition: background 0.2s ease, box-shadow 0.2s ease;
+}
+
+.im-search::placeholder {
+    color: var(--im-text-secondary);
 }
 
 .im-search:focus {
@@ -1180,7 +1185,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   background: var(--im-text-primary);
-  color: var(--im-text-inverse);
+  color: var(--im-bg-primary);
   font-size: 11px;
   white-space: nowrap;
   padding: 4px 8px;

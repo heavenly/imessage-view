@@ -117,6 +117,214 @@ pub struct HourlyStatView {
     pub is_peak: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct GroupReactionHighlightView {
+    pub title: String,
+    pub glyph: String,
+    pub metric: String,
+    pub sender_name: String,
+    pub preview: String,
+    pub message_id: i64,
+}
+
+fn built_in_reaction_glyph(reaction_type: i64) -> Option<&'static str> {
+    match reaction_type {
+        2000 => Some("❤️"),
+        2001 => Some("👍"),
+        2002 => Some("👎"),
+        2003 => Some("HaHa"),
+        2004 => Some("‼"),
+        2005 => Some("?"),
+        _ => None,
+    }
+}
+
+fn built_in_reaction_noun(reaction_type: i64) -> Option<&'static str> {
+    match reaction_type {
+        2000 => Some("love"),
+        2001 => Some("like"),
+        2002 => Some("dislike"),
+        2003 => Some("laugh"),
+        2004 => Some("exclamation"),
+        2005 => Some("question"),
+        _ => None,
+    }
+}
+
+fn message_preview(body: Option<&str>, has_attachments: bool) -> String {
+    let trimmed = body.unwrap_or_default().trim();
+    if !trimmed.is_empty() {
+        let mut preview = String::new();
+        let mut chars = trimmed.chars();
+        for _ in 0..80 {
+            if let Some(ch) = chars.next() {
+                preview.push(ch);
+            } else {
+                return preview;
+            }
+        }
+        if chars.next().is_some() {
+            preview.push_str("...");
+        }
+        preview
+    } else if has_attachments {
+        "Attachment".to_string()
+    } else {
+        "Message".to_string()
+    }
+}
+
+fn pluralize(label: &str, count: i64) -> String {
+    if count == 1 {
+        label.to_string()
+    } else {
+        format!("{label}s")
+    }
+}
+
+pub fn build_group_reaction_highlights(
+    conn: &rusqlite::Connection,
+    conversation_id: i64,
+) -> Vec<GroupReactionHighlightView> {
+    let messages =
+        queries::get_conversation_reaction_messages(conn, conversation_id).unwrap_or_default();
+    if messages.is_empty() {
+        return vec![];
+    }
+
+    let message_guids: Vec<String> = messages
+        .iter()
+        .map(|message| message.guid.clone())
+        .collect();
+    let reactions_by_guid =
+        queries::get_reactions_for_messages(conn, &message_guids).unwrap_or_default();
+
+    struct EffectiveMessage<'a> {
+        message: &'a queries::ConversationReactionMessage,
+        counts: HashMap<i64, i64>,
+        varied_count: i64,
+    }
+
+    let effective_messages: Vec<EffectiveMessage<'_>> = messages
+        .iter()
+        .filter_map(|message| {
+            let mut by_sender: HashMap<String, i64> = HashMap::new();
+            if let Some(reactions) = reactions_by_guid.get(&message.guid) {
+                for reaction in reactions {
+                    let sender_key = if reaction.is_from_me {
+                        "me".to_string()
+                    } else {
+                        reaction
+                            .sender_name
+                            .clone()
+                            .unwrap_or_else(|| "unknown".to_string())
+                    };
+
+                    if (3000..=3007).contains(&reaction.reaction_type) {
+                        by_sender.remove(&sender_key);
+                    } else if built_in_reaction_glyph(reaction.reaction_type).is_some() {
+                        by_sender.insert(sender_key, reaction.reaction_type);
+                    } else {
+                        by_sender.remove(&sender_key);
+                    }
+                }
+            }
+
+            let mut counts: HashMap<i64, i64> = HashMap::new();
+            for reaction_type in by_sender.into_values() {
+                *counts.entry(reaction_type).or_insert(0) += 1;
+            }
+
+            if counts.is_empty() {
+                return None;
+            }
+
+            Some(EffectiveMessage {
+                message,
+                varied_count: counts.len() as i64,
+                counts,
+            })
+        })
+        .collect();
+
+    if effective_messages.is_empty() {
+        return vec![];
+    }
+
+    let mut highlights = Vec::new();
+    for (reaction_type, title) in [
+        (2000, "Most Loved"),
+        (2001, "Most Liked"),
+        (2002, "Most Disliked"),
+        (2003, "Most Laughed At"),
+        (2004, "Most Exclaimed"),
+        (2005, "Most Questioned"),
+    ] {
+        if let Some(best) = effective_messages
+            .iter()
+            .filter_map(|message| {
+                message
+                    .counts
+                    .get(&reaction_type)
+                    .copied()
+                    .map(|count| (message, count))
+            })
+            .max_by(|left, right| {
+                left.1
+                    .cmp(&right.1)
+                    .then_with(|| left.0.message.date_unix.cmp(&right.0.message.date_unix))
+                    .then_with(|| left.0.message.id.cmp(&right.0.message.id))
+            })
+        {
+            let noun = built_in_reaction_noun(reaction_type).unwrap_or("reaction");
+            highlights.push(GroupReactionHighlightView {
+                title: title.to_string(),
+                glyph: built_in_reaction_glyph(reaction_type)
+                    .unwrap_or("?")
+                    .to_string(),
+                metric: format!("{} {}", best.1, pluralize(noun, best.1)),
+                sender_name: best
+                    .0
+                    .message
+                    .sender_name
+                    .clone()
+                    .unwrap_or_else(|| "Unknown".to_string()),
+                preview: message_preview(
+                    best.0.message.body.as_deref(),
+                    best.0.message.has_attachments,
+                ),
+                message_id: best.0.message.id,
+            });
+        }
+    }
+
+    if let Some(best) = effective_messages.iter().max_by(|left, right| {
+        left.varied_count
+            .cmp(&right.varied_count)
+            .then_with(|| left.message.date_unix.cmp(&right.message.date_unix))
+            .then_with(|| left.message.id.cmp(&right.message.id))
+    }) {
+        highlights.push(GroupReactionHighlightView {
+            title: "Most Varied Reactions".to_string(),
+            glyph: "✨".to_string(),
+            metric: format!(
+                "{} {}",
+                best.varied_count,
+                pluralize("type", best.varied_count)
+            ),
+            sender_name: best
+                .message
+                .sender_name
+                .clone()
+                .unwrap_or_else(|| "Unknown".to_string()),
+            preview: message_preview(best.message.body.as_deref(), best.message.has_attachments),
+            message_id: best.message.id,
+        });
+    }
+
+    highlights
+}
+
 pub fn build_hourly_stat_views(
     conn: &rusqlite::Connection,
     conversation_id: i64,
@@ -157,6 +365,7 @@ struct ConversationPanelTemplate {
     avg_time_between: Option<String>,
     focus_message_id: Option<i64>,
     group_participant_stats: Vec<queries::GroupParticipantStat>,
+    reaction_highlights: Vec<GroupReactionHighlightView>,
     hourly_stats: Vec<HourlyStatView>,
 }
 
@@ -208,12 +417,13 @@ pub async fn conversation_panel_partial(
         (their, mine, None)
     };
 
-    let (group_participant_stats, hourly_stats) = if is_group {
+    let (group_participant_stats, reaction_highlights, hourly_stats) = if is_group {
         let stats = queries::get_group_participant_stats(&conn, id).unwrap_or_default();
-        (stats, vec![])
+        let reaction_highlights = build_group_reaction_highlights(&conn, id);
+        (stats, reaction_highlights, vec![])
     } else {
         let hourly = build_hourly_stat_views(&conn, id);
-        (vec![], hourly)
+        (vec![], vec![], hourly)
     };
 
     let t = ConversationPanelTemplate {
@@ -229,6 +439,7 @@ pub async fn conversation_panel_partial(
         avg_time_between,
         focus_message_id: params.focus,
         group_participant_stats,
+        reaction_highlights,
         hourly_stats,
     };
     Html(t.render().unwrap_or_default())

@@ -4,7 +4,7 @@ use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse};
 use serde::{Deserialize, Serialize};
 
-use super::partials::{ContributionDay, HourlyStatView};
+use super::partials::{ContributionDay, GroupReactionHighlightView, HourlyStatView};
 use crate::db::queries;
 use crate::state::AppState;
 
@@ -134,10 +134,20 @@ struct ConversationTemplate {
     avg_time_between: Option<String>,
     focus_message_id: Option<i64>,
     group_participant_stats: Vec<queries::GroupParticipantStat>,
+    reaction_highlights: Vec<GroupReactionHighlightView>,
     hourly_stats: Vec<HourlyStatView>,
 }
 
-pub async fn conversation(State(state): State<AppState>, Path(id): Path<i64>) -> impl IntoResponse {
+#[derive(Deserialize)]
+pub struct ConversationQuery {
+    pub focus: Option<i64>,
+}
+
+pub async fn conversation(
+    State(state): State<AppState>,
+    Path(id): Path<i64>,
+    Query(params): Query<ConversationQuery>,
+) -> impl IntoResponse {
     let conn = state.db.lock().unwrap();
     let info = queries::get_conversation_info(&conn, id);
 
@@ -181,12 +191,13 @@ pub async fn conversation(State(state): State<AppState>, Path(id): Path<i64>) ->
         (their, mine, None)
     };
 
-    let (group_participant_stats, hourly_stats) = if is_group {
+    let (group_participant_stats, reaction_highlights, hourly_stats) = if is_group {
         let stats = queries::get_group_participant_stats(&conn, id).unwrap_or_default();
-        (stats, vec![])
+        let reaction_highlights = super::partials::build_group_reaction_highlights(&conn, id);
+        (stats, reaction_highlights, vec![])
     } else {
         let hourly = super::partials::build_hourly_stat_views(&conn, id);
-        (vec![], hourly)
+        (vec![], vec![], hourly)
     };
 
     let t = ConversationTemplate {
@@ -201,8 +212,9 @@ pub async fn conversation(State(state): State<AppState>, Path(id): Path<i64>) ->
         avg_their_response,
         avg_my_response,
         avg_time_between,
-        focus_message_id: None,
+        focus_message_id: params.focus,
         group_participant_stats,
+        reaction_highlights,
         hourly_stats,
     };
     Html(t.render().unwrap_or_default())

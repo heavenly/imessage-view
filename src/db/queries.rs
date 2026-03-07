@@ -194,6 +194,16 @@ pub struct MessageReaction {
     pub reaction_emoji: Option<String>,
 }
 
+#[derive(Debug, Serialize)]
+pub struct ConversationReactionMessage {
+    pub id: i64,
+    pub guid: String,
+    pub body: Option<String>,
+    pub date_unix: i64,
+    pub sender_name: Option<String>,
+    pub has_attachments: bool,
+}
+
 fn map_message_row(row: &rusqlite::Row) -> rusqlite::Result<MessageRow> {
     Ok(MessageRow {
         id: row.get(0)?,
@@ -481,6 +491,40 @@ pub fn get_messages_after(
             rusqlite::params![conversation_id, anchor_date, anchor_id, limit],
             map_message_row,
         )?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
+pub fn get_conversation_reaction_messages(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Vec<ConversationReactionMessage>> {
+    let mut stmt = conn.prepare(
+        "SELECT m.id,
+                m.guid,
+                m.body,
+                m.date_unix,
+                COALESCE(ct.display_name, ct.handle) AS sender_name,
+                m.has_attachments
+         FROM messages m
+         LEFT JOIN contacts ct ON ct.id = m.sender_id
+         WHERE m.conversation_id = ?1
+           AND m.is_reaction = FALSE
+         ORDER BY m.date_unix DESC, m.id DESC",
+    )?;
+
+    let rows = stmt
+        .query_map([conversation_id], |row| {
+            Ok(ConversationReactionMessage {
+                id: row.get(0)?,
+                guid: row.get(1)?,
+                body: row.get(2)?,
+                date_unix: row.get(3)?,
+                sender_name: row.get(4)?,
+                has_attachments: row.get(5)?,
+            })
+        })?
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(rows)

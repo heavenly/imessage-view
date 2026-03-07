@@ -91,6 +91,23 @@
                 {% endfor %}
             </ul>
         </div>
+        {% if !reaction_highlights.is_empty() %}
+        <div class="im-sidebar-section">
+            <div class="im-sidebar-section-title">Top Reactions</div>
+            <div class="im-reaction-highlight-list">
+                {% for item in reaction_highlights %}
+                <a class="im-reaction-highlight-item" href="/conversations/{{ conversation_id }}?focus={{ item.message_id }}">
+                    <div class="im-reaction-highlight-top">
+                        <span class="im-reaction-highlight-title"><span class="im-reaction-highlight-glyph">{{ item.glyph }}</span>{{ item.title }}</span>
+                        <span class="im-reaction-highlight-metric">{{ item.metric }}</span>
+                    </div>
+                    <p class="im-reaction-highlight-preview">{{ item.preview }}</p>
+                    <span class="im-reaction-highlight-sender">{{ item.sender_name }}</span>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
         {% else %}
         {% if avg_their_response.is_some() || avg_my_response.is_some() %}
         <div class="im-sidebar-section">

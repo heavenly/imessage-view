@@ -34,19 +34,21 @@
     </header>
     
     <div class="im-tab-bar">
-        <button class="im-tab active" 
+        <button class="im-tab active"
+                data-tab="messages"
                 hx-get="/partials/messages?conversation_id={{ conversation_id }}{% if let Some(fid) = focus_message_id %}&amp;focus={{ fid }}{% endif %}"
                 hx-target="#tab-content"
                 hx-swap="innerHTML"
                 hx-trigger="load, click"
-                onclick="document.querySelectorAll('.im-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">
+                onclick="activateConversationTab('messages')">
             Messages
         </button>
         <button class="im-tab"
+                data-tab="attachments"
                 hx-get="/partials/conversation-attachments?conversation_id={{ conversation_id }}"
                 hx-target="#tab-content"
                 hx-swap="innerHTML"
-                onclick="document.querySelectorAll('.im-tab').forEach(t=>t.classList.remove('active'));this.classList.add('active')">
+                onclick="activateConversationTab('attachments')">
             Attachments
             <span class="im-tab-count">{{ attachment_count }}</span>
         </button>
@@ -110,7 +112,13 @@
             <div class="im-sidebar-section-title">Top Reactions</div>
             <div class="im-reaction-highlight-list">
                 {% for item in reaction_highlights %}
-                <a class="im-reaction-highlight-item" href="/conversations/{{ conversation_id }}?focus={{ item.message_id }}">
+                <a class="im-reaction-highlight-item"
+                   href="/conversations/{{ conversation_id }}?focus={{ item.message_id }}"
+                   hx-get="/partials/messages?conversation_id={{ conversation_id }}&amp;focus={{ item.message_id }}"
+                   hx-target="#tab-content"
+                   hx-swap="innerHTML"
+                   hx-push-url="/conversations/{{ conversation_id }}?focus={{ item.message_id }}"
+                   onclick="activateConversationTab('messages')">
                     <div class="im-reaction-highlight-top">
                         <span class="im-reaction-highlight-title"><span class="im-reaction-highlight-glyph">{{ item.glyph }}</span>{{ item.title }}</span>
                         <span class="im-reaction-highlight-metric">{{ item.metric }}</span>
@@ -241,6 +249,12 @@
 </div>
 
 <script>
+window.activateConversationTab = function(tabName) {
+    document.querySelectorAll('.im-tab').forEach(function(tab) {
+        tab.classList.toggle('active', tab.dataset.tab === tabName);
+    });
+};
+
 window.toggleSidebar = function() {
     var sidebar = document.getElementById('conversation-sidebar');
     var chevron = document.querySelector('.sidebar-chevron');
@@ -254,6 +268,17 @@ window.toggleSidebar = function() {
     var tabContent = document.getElementById('tab-content');
     var scrollBtn = document.getElementById('scroll-to-bottom');
     if (tabContent && scrollBtn) {
+        document.body.addEventListener('htmx:afterSwap', function(event) {
+            if (event.target !== tabContent) {
+                return;
+            }
+
+            var focusedMessage = tabContent.querySelector('.im-message--focused');
+            if (focusedMessage) {
+                focusedMessage.scrollIntoView({ block: 'center', behavior: 'smooth' });
+            }
+        });
+
         tabContent.addEventListener('scroll', function() {
             var distFromBottom = tabContent.scrollHeight - tabContent.scrollTop - tabContent.clientHeight;
             if (distFromBottom > 300) {

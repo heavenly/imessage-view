@@ -19,6 +19,8 @@ pub struct ConversationPanelQuery {
 pub struct ContributionDay {
     pub date: String,
     pub level: u8,
+    pub sent: i64,
+    pub received: i64,
 }
 
 pub fn format_duration(seconds: f64) -> String {
@@ -49,15 +51,24 @@ pub fn format_duration(seconds: f64) -> String {
 pub fn build_contribution_graph(
     conn: &rusqlite::Connection,
     conversation_id: i64,
+    is_group: bool,
 ) -> Vec<ContributionDay> {
     use std::collections::HashMap;
     let rows = queries::get_mutual_interaction_days(conn, conversation_id, 90).unwrap_or_default();
     let day_map: HashMap<String, &queries::MutualInteractionDay> =
         rows.iter().map(|d| (d.date.clone(), d)).collect();
 
+    let is_active = |d: &&queries::MutualInteractionDay| -> bool {
+        if is_group {
+            d.sent + d.received > 0
+        } else {
+            d.sent > 0 && d.received > 0
+        }
+    };
+
     let max_total = day_map
         .values()
-        .filter(|d| d.sent > 0 && d.received > 0)
+        .filter(|d| is_active(d))
         .map(|d| d.sent + d.received)
         .max()
         .unwrap_or(1) as f64;
@@ -67,10 +78,11 @@ pub fn build_contribution_graph(
     for i in (0..90).rev() {
         let date = today - chrono::Duration::days(i);
         let date_str = date.format("%Y-%m-%d").to_string();
-        let level = match day_map.get(&date_str) {
-            Some(d) if d.sent > 0 && d.received > 0 => {
+        let date_display = date.format("%b %-d, %Y").to_string();
+        let (level, sent, received) = match day_map.get(&date_str) {
+            Some(d) if is_active(d) => {
                 let ratio = (d.sent + d.received) as f64 / max_total;
-                if ratio > 0.75 {
+                let l = if ratio > 0.75 {
                     4
                 } else if ratio > 0.50 {
                     3
@@ -78,13 +90,17 @@ pub fn build_contribution_graph(
                     2
                 } else {
                     1
-                }
+                };
+                (l, d.sent, d.received)
             }
-            _ => 0,
+            Some(d) => (0, d.sent, d.received),
+            None => (0, 0, 0),
         };
         result.push(ContributionDay {
-            date: date_str,
+            date: date_display,
             level,
+            sent,
+            received,
         });
     }
     result
@@ -132,7 +148,7 @@ pub async fn conversation_panel_partial(
     };
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
-    let contribution_days = build_contribution_graph(&conn, id);
+    let contribution_days = build_contribution_graph(&conn, id, is_group);
 
     let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
         let avg = queries::get_avg_time_between_messages(&conn, id)

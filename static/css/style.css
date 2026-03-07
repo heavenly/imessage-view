@@ -916,6 +916,7 @@ body {
     max-width: 90vw;
     position: relative;
     padding: 2rem 1.5rem;
+    overflow: visible;
 }
 
 .im-contact-modal-body {
@@ -1176,6 +1177,47 @@ body {
   aspect-ratio: 1;
   border-radius: 3px;
   background: var(--im-bg-tertiary);
+  position: relative;
+  cursor: default;
+}
+
+.contribution-cell::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--im-text-primary);
+  color: var(--im-text-inverse);
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 6px;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  z-index: 10;
+}
+
+.contribution-cell:hover::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Left-edge cells (columns 1-2): align tooltip to the left */
+.contribution-cell:nth-child(15n+1)::after,
+.contribution-cell:nth-child(15n+2)::after {
+  left: 0;
+  transform: none;
+}
+
+/* Right-edge cells (columns 14-15): align tooltip to the right */
+.contribution-cell:nth-child(15n+14)::after,
+.contribution-cell:nth-child(15n)::after {
+  left: auto;
+  right: 0;
+  transform: none;
 }
 
 .contribution-level-0 {

@@ -161,7 +161,7 @@ pub async fn conversation(
     };
 
     let attachment_count = queries::count_conversation_attachments(&conn, id).unwrap_or(0);
-    let contribution_days = super::partials::build_contribution_graph(&conn, id);
+    let contribution_days = super::partials::build_contribution_graph(&conn, id, is_group);
 
     let (avg_their_response, avg_my_response, avg_time_between) = if is_group {
         let avg = queries::get_avg_time_between_messages(&conn, id)

@@ -73,7 +73,11 @@
                 <p class="contribution-graph-label">Last 90 days</p>
                 <div class="contribution-grid">
                     {% for day in contribution_days %}
-                    <div class="contribution-cell contribution-level-{{ day.level }}" title="{{ day.date }}"></div>
+                    {% if is_group %}
+                    <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent + day.received }} messages"></div>
+                    {% else %}
+                    <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent }} sent, {{ day.received }} received"></div>
+                    {% endif %}
                     {% endfor %}
                 </div>
             </div>

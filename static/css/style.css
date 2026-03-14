@@ -1470,10 +1470,11 @@ body {
   bottom: 0;
   background: rgba(0, 0, 0, 0.8);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   z-index: 1000;
   padding: 2rem;
+  overflow-y: auto;
 }
 
 .modal-content {
@@ -1511,32 +1512,102 @@ body {
 
 /* Contact Info Modal */
 .im-contact-modal {
-    width: 360px;
-    max-width: 90vw;
+    width: min(560px, 92vw);
+    max-width: 92vw;
+    max-height: none;
     position: relative;
-    padding: 2rem 1.5rem;
+    margin: auto 0;
     overflow: visible;
+    border-radius: 28px;
+    border: 1px solid color-mix(in srgb, var(--im-border) 70%, transparent);
+    background:
+        radial-gradient(circle at top, color-mix(in srgb, var(--im-accent) 12%, transparent) 0%, transparent 34%),
+        linear-gradient(180deg, color-mix(in srgb, var(--im-bg-secondary) 92%, var(--im-bg-primary)) 0%, var(--im-bg-primary) 100%);
+    box-shadow: 0 28px 80px rgba(0, 0, 0, 0.28);
 }
 
 .im-contact-modal-body {
     display: flex;
     flex-direction: column;
+    gap: 1.1rem;
+    padding: 1.5rem;
+}
+
+.im-contact-modal-hero {
+    display: flex;
     align-items: center;
-    text-align: center;
-    gap: 8px;
+    gap: 1rem;
+    padding: 0.35rem 2.5rem 0 0;
 }
 
 .im-contact-modal-avatar {
-    width: 80px;
-    height: 80px;
-    font-size: 32px;
-    margin-bottom: 4px;
+    width: 72px;
+    height: 72px;
+    font-size: 28px;
+    border-radius: 22px;
+    flex-shrink: 0;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.12);
+}
+
+.im-contact-modal-heading {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.im-contact-modal-kicker {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--im-text-secondary);
+}
+
+.im-contact-modal-title-row {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-width: 0;
 }
 
 .im-contact-modal-name {
-    font-size: 20px;
-    font-weight: 600;
+    font-size: 1.75rem;
+    font-weight: 700;
     margin: 0;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+}
+
+.im-contact-modal-link-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 999px;
+    background: var(--im-bg-primary);
+    border: 1px solid var(--im-divider-light);
+    color: var(--im-text-secondary);
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.06);
+    transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.im-contact-modal-link-icon:hover {
+    background: var(--im-bg-tertiary);
+    color: var(--im-text-primary);
+    transform: translateY(-1px);
+}
+
+.im-contact-modal-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
 }
 
 .im-contact-modal-detail {
@@ -1546,79 +1617,151 @@ body {
 }
 
 .im-contact-modal-participants {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--im-text-secondary);
-    margin: 4px 0 0 0;
-    line-height: 1.4;
+    margin: 0;
+    line-height: 1.55;
 }
 
 .im-contact-modal-stats {
-    display: flex;
-    gap: 24px;
-    justify-content: center;
-    margin: 4px 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+}
+
+.im-contact-modal-stats--single {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .im-contact-modal-stat {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    gap: 2px;
+    align-items: flex-start;
+    gap: 0.2rem;
+    padding: 0.95rem 1rem;
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--im-bg-primary) 72%, var(--im-bg-secondary));
+    border: 1px solid var(--im-divider-light);
 }
 
 .im-contact-modal-section {
     width: 100%;
     display: flex;
     flex-direction: column;
-    gap: 0.55rem;
-    padding: 0.9rem 1rem;
-    border-radius: 16px;
-    border: 1px solid var(--im-border);
-    background: linear-gradient(180deg, var(--im-bg-secondary) 0%, var(--im-bg-primary) 100%);
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.04);
+    gap: 0.8rem;
+    padding: 1rem;
+    border-radius: 22px;
+    border: 1px solid var(--im-divider-light);
+    background: color-mix(in srgb, var(--im-bg-primary) 72%, var(--im-bg-secondary));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55);
 }
 
-.im-contact-modal-section-header {
+.im-contact-modal-section--graph {
+    gap: 0.7rem;
+    padding: 1rem 0 0.9rem;
+}
+
+.im-contact-modal-section--action {
+    padding: 0.45rem;
+}
+
+.im-contact-modal-section-top {
     display: flex;
     align-items: flex-start;
     justify-content: space-between;
     gap: 0.75rem;
+    padding: 0 1rem;
 }
 
 .im-contact-modal-section-label {
     margin: 0;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--im-text-secondary);
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 0.7px;
+}
+
+.im-contact-modal-section-title {
+    margin: 0.18rem 0 0 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--im-text-primary);
+}
+
+.im-contact-modal-section-caption {
+    margin: 0;
+    font-size: 12px;
+    color: var(--im-text-secondary);
+    text-align: right;
+}
+
+.im-contact-modal-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.im-contact-modal-row-copy {
+    min-width: 0;
+}
+
+.im-contact-modal-row-title {
+    margin: 0.18rem 0 0.2rem 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--im-text-primary);
 }
 
 .im-contact-modal-section-value {
     margin: 0;
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 15px;
+    font-weight: 500;
     color: var(--im-text-primary);
-    text-align: left;
+    line-height: 1.35;
 }
 
 .im-contact-modal-section-chip {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 28px;
-    padding: 0.35rem 0.65rem;
+    min-height: 26px;
+    padding: 0.3rem 0.65rem;
     border-radius: 999px;
-    background: var(--im-bg-tertiary);
+    border: 1px solid var(--im-divider-light);
+    background: var(--im-bg-primary);
     color: var(--im-text-secondary);
     font-size: 12px;
     font-weight: 500;
     line-height: 1.2;
     text-align: center;
+    flex-shrink: 0;
+}
+
+.im-contact-modal-action {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 46px;
+    padding: 0.8rem 1rem;
+    border-radius: 18px;
+    background: color-mix(in srgb, var(--im-accent) 12%, var(--im-bg-primary));
+    color: var(--im-text-primary);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    border: 1px solid color-mix(in srgb, var(--im-accent) 18%, var(--im-divider-light));
+    transition: background 0.15s ease, transform 0.15s ease;
+}
+
+.im-contact-modal-action:hover {
+    background: color-mix(in srgb, var(--im-accent) 18%, var(--im-bg-primary));
+    transform: translateY(-1px);
 }
 
 .im-stat-value {
-    font-size: 16px;
+    font-size: 18px;
     font-weight: 600;
     color: var(--im-text-primary);
 }
@@ -1628,6 +1771,28 @@ body {
     color: var(--im-text-secondary);
     text-transform: uppercase;
     letter-spacing: 0.3px;
+}
+
+.im-contact-modal .modal-close {
+    top: 1rem;
+    right: 1rem;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--im-bg-primary) 78%, var(--im-bg-secondary));
+    border: 1px solid var(--im-divider-light);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
+}
+
+.im-contact-modal .im-loading {
+    min-height: 220px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
 }
 
 /* ==============================
@@ -1813,10 +1978,22 @@ body {
 /* Contribution Graph */
 .contribution-graph {
   width: 100%;
+  max-width: 100%;
+  align-self: stretch;
   margin-top: 12px;
-  --contribution-label-width: 28px;
-  --contribution-cell-size: 11px;
+  --contribution-label-width: 24px;
+  --contribution-cell-size: 20px;
   --contribution-gap: 3px;
+}
+
+.im-contact-modal-graph {
+  margin-top: 0;
+  width: 100%;
+  max-width: none;
+}
+
+.im-contact-modal-graph .contribution-graph-label {
+  padding: 0 1rem;
 }
 
 .contribution-graph-label {
@@ -1825,17 +2002,48 @@ body {
   margin: 0 0 6px 0;
 }
 
+.contribution-scroll {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.im-contact-modal-graph .contribution-scroll {
+  padding: 0.25rem 0 0.35rem;
+  border-radius: 0;
+}
+
 .contribution-axis--months {
   display: grid;
-  grid-template-columns: var(--contribution-label-width) repeat(var(--contribution-weeks), var(--contribution-cell-size));
+  grid-template-columns: var(--contribution-label-width) auto;
   gap: var(--contribution-gap);
   align-items: end;
   margin-bottom: 6px;
   overflow: visible;
+  width: 100%;
+  min-width: calc(
+    var(--contribution-label-width) +
+    (var(--contribution-weeks) * var(--contribution-cell-size)) +
+    ((var(--contribution-weeks) - 1) * var(--contribution-gap))
+  );
 }
 
 .contribution-axis-spacer {
   width: var(--contribution-label-width);
+  min-width: var(--contribution-label-width);
+}
+
+.contribution-months {
+  display: grid;
+  grid-template-columns: repeat(var(--contribution-weeks), minmax(var(--contribution-cell-size), 1fr));
+  gap: var(--contribution-gap);
+  width: 100%;
+  min-width: calc(
+    (var(--contribution-weeks) * var(--contribution-cell-size)) +
+    ((var(--contribution-weeks) - 1) * var(--contribution-gap))
+  );
 }
 
 .contribution-month-label {
@@ -1852,13 +2060,22 @@ body {
   display: grid;
   grid-template-columns: var(--contribution-label-width) auto;
   gap: var(--contribution-gap);
-  align-items: start;
+  align-items: stretch;
+  width: 100%;
+  min-width: calc(
+    var(--contribution-label-width) +
+    (var(--contribution-weeks) * var(--contribution-cell-size)) +
+    ((var(--contribution-weeks) - 1) * var(--contribution-gap))
+  );
 }
 
 .contribution-weekday-axis {
   display: grid;
-  grid-template-rows: repeat(7, var(--contribution-cell-size));
+  grid-template-rows: repeat(7, minmax(0, 1fr));
   gap: var(--contribution-gap);
+  width: var(--contribution-label-width);
+  min-width: var(--contribution-label-width);
+  height: 100%;
 }
 
 .contribution-weekday-label {
@@ -1873,19 +2090,25 @@ body {
 
 .contribution-weeks {
   display: grid;
-  grid-template-columns: repeat(var(--contribution-weeks), var(--contribution-cell-size));
+  grid-template-columns: repeat(var(--contribution-weeks), minmax(var(--contribution-cell-size), 1fr));
   gap: var(--contribution-gap);
+  width: 100%;
+  min-width: calc(
+    (var(--contribution-weeks) * var(--contribution-cell-size)) +
+    ((var(--contribution-weeks) - 1) * var(--contribution-gap))
+  );
 }
 
 .contribution-week {
   display: grid;
-  grid-template-rows: repeat(7, var(--contribution-cell-size));
+  grid-template-rows: repeat(7, minmax(0, 1fr));
   gap: var(--contribution-gap);
+  aspect-ratio: 1 / 7;
 }
 
 .contribution-cell {
-  width: var(--contribution-cell-size);
-  height: var(--contribution-cell-size);
+  width: 100%;
+  height: 100%;
   border-radius: 3px;
   background: var(--im-bg-tertiary);
   position: relative;
@@ -1960,21 +2183,48 @@ body {
 }
 
 @media (max-width: 640px) {
+  .im-contact-modal {
+    width: 92vw;
+    border-radius: 24px;
+    margin: auto 0;
+  }
+
+  .im-contact-modal-body {
+    padding: 1rem;
+  }
+
+  .im-contact-modal-hero {
+    align-items: flex-start;
+    padding-right: 2.25rem;
+  }
+
+  .im-contact-modal-avatar {
+    width: 64px;
+    height: 64px;
+    font-size: 24px;
+  }
+
+  .im-contact-modal-name {
+    font-size: 1.45rem;
+  }
+
+  .im-contact-modal-section-top,
+  .im-contact-modal-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .im-contact-modal-section-caption {
+    text-align: left;
+  }
+
+  .im-contact-modal-stats {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .contribution-graph {
     --contribution-label-width: 24px;
-    --contribution-cell-size: 9px;
-  }
-
-  .contribution-chart {
-    grid-template-columns: var(--contribution-label-width) auto;
-  }
-
-  .contribution-axis--months {
-    grid-template-columns: var(--contribution-label-width) repeat(var(--contribution-weeks), var(--contribution-cell-size));
-  }
-
-  .contribution-axis-spacer {
-    width: var(--contribution-label-width);
+    --contribution-cell-size: 14px;
   }
 
   .contribution-month-label,

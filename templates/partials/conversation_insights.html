@@ -107,81 +107,122 @@
     {% endif %}
 </div>
 
-<div id="contact-info-modal-insights" hx-swap-oob="true">
-    <div class="contribution-graph">
-        <p class="contribution-graph-label">Last 90 days</p>
-        <div class="contribution-axis contribution-axis--months" style="--contribution-weeks: {{ insights.contribution_graph.week_count }};">
-            <div class="contribution-axis-spacer"></div>
-            {% for week in insights.contribution_graph.weeks %}
-            <div class="contribution-month-label">{% if let Some(label) = week.month_label %}{{ label }}{% endif %}</div>
-            {% endfor %}
-        </div>
-        <div class="contribution-chart" style="--contribution-weeks: {{ insights.contribution_graph.week_count }};">
-            <div class="contribution-weekday-axis">
-                {% for label in insights.contribution_graph.weekday_labels %}
-                <div class="contribution-weekday-label">{{ label }}</div>
-                {% endfor %}
+<div id="contact-info-modal-insights" class="im-contact-modal-content" hx-swap-oob="true">
+    <section class="im-contact-modal-section im-contact-modal-section--graph">
+        <div class="im-contact-modal-section-top">
+            <div>
+                <p class="im-contact-modal-section-label">Activity</p>
+                <h3 class="im-contact-modal-section-title">Last 90 days</h3>
             </div>
-            <div class="contribution-weeks" style="--contribution-weeks: {{ insights.contribution_graph.week_count }};">
-                {% for week in insights.contribution_graph.weeks %}
-                <div class="contribution-week">
-                    {% for day in week.days %}
-                    {% if let Some(day) = day %}
-                    {% if is_group %}
-                    <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent + day.received }} messages"></div>
-                    {% else %}
-                    <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent }} sent, {{ day.received }} received"></div>
-                    {% endif %}
-                    {% else %}
-                    <div class="contribution-cell contribution-cell--empty"></div>
-                    {% endif %}
-                    {% endfor %}
+            <p class="im-contact-modal-section-caption">Daily message volume</p>
+        </div>
+        <div class="contribution-graph im-contact-modal-graph" style="--contribution-weeks: {{ insights.contribution_graph.week_count }};">
+            <p class="contribution-graph-label">Scroll to inspect each day</p>
+            <div class="contribution-scroll">
+                <div class="contribution-axis contribution-axis--months">
+                    <div class="contribution-axis-spacer"></div>
+                    <div class="contribution-months">
+                        {% for week in insights.contribution_graph.weeks %}
+                        <div class="contribution-month-label">{% if let Some(label) = week.month_label %}{{ label }}{% endif %}</div>
+                        {% endfor %}
+                    </div>
                 </div>
-                {% endfor %}
+                <div class="contribution-chart">
+                    <div class="contribution-weekday-axis">
+                        {% for label in insights.contribution_graph.weekday_labels %}
+                        <div class="contribution-weekday-label">{{ label }}</div>
+                        {% endfor %}
+                    </div>
+                    <div class="contribution-weeks">
+                        {% for week in insights.contribution_graph.weeks %}
+                        <div class="contribution-week">
+                            {% for day in week.days %}
+                            {% if let Some(day) = day %}
+                            {% if is_group %}
+                            <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent + day.received }} messages"></div>
+                            {% else %}
+                            <div class="contribution-cell contribution-level-{{ day.level }}" data-tip="{{ day.date }} — {{ day.sent }} sent, {{ day.received }} received"></div>
+                            {% endif %}
+                            {% else %}
+                            <div class="contribution-cell contribution-cell--empty"></div>
+                            {% endif %}
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
+    </section>
     {% if let Some(started_at) = insights.conversation_started_at %}
-    <div class="im-contact-modal-section">
-        <div class="im-contact-modal-section-header">
-            <p class="im-contact-modal-section-label">Chat started</p>
+    <section class="im-contact-modal-section">
+        <div class="im-contact-modal-row">
+            <div class="im-contact-modal-row-copy">
+                <p class="im-contact-modal-section-label">Timeline</p>
+                <h3 class="im-contact-modal-row-title">Chat started</h3>
+                <p class="im-contact-modal-section-value">{{ started_at }}</p>
+            </div>
             {% if let Some(started_ago) = insights.conversation_started_ago %}
             <span class="im-contact-modal-section-chip">{{ started_ago }}</span>
             {% endif %}
         </div>
-        <p class="im-contact-modal-section-value">{{ started_at }}</p>
-    </div>
+    </section>
     {% endif %}
     {% if is_group %}
     {% if let Some(avg) = insights.avg_time_between %}
-    <div class="im-contact-modal-stats">
-        <div class="im-contact-modal-stat">
-            <span class="im-stat-value">~{{ avg }}</span>
-            <span class="im-stat-label">Avg. time between messages</span>
+    <section class="im-contact-modal-section">
+        <div class="im-contact-modal-section-top">
+            <div>
+                <p class="im-contact-modal-section-label">Cadence</p>
+                <h3 class="im-contact-modal-section-title">Conversation pace</h3>
+            </div>
         </div>
-    </div>
+        <div class="im-contact-modal-stats im-contact-modal-stats--single">
+            <div class="im-contact-modal-stat">
+                <span class="im-stat-value">~{{ avg }}</span>
+                <span class="im-stat-label">Avg. time between messages</span>
+            </div>
+        </div>
+    </section>
     {% endif %}
-    <p class="im-contact-modal-detail">{{ participants.len() }} participants</p>
-    <p class="im-contact-modal-participants">{{ participants.join(", ") }}</p>
+    <section class="im-contact-modal-section">
+        <div class="im-contact-modal-section-top">
+            <div>
+                <p class="im-contact-modal-section-label">People</p>
+                <h3 class="im-contact-modal-section-title">{{ participants.len() }} participants</h3>
+            </div>
+        </div>
+        <p class="im-contact-modal-participants">{{ participants.join(", ") }}</p>
+    </section>
     {% else %}
     {% if insights.avg_their_response.is_some() || insights.avg_my_response.is_some() %}
-    <div class="im-contact-modal-stats">
-        {% if let Some(avg) = insights.avg_their_response %}
-        <div class="im-contact-modal-stat">
-            <span class="im-stat-value">~{{ avg }}</span>
-            <span class="im-stat-label">Their avg. response</span>
+    <section class="im-contact-modal-section">
+        <div class="im-contact-modal-section-top">
+            <div>
+                <p class="im-contact-modal-section-label">Response times</p>
+                <h3 class="im-contact-modal-section-title">How the conversation moves</h3>
+            </div>
         </div>
-        {% endif %}
-        {% if let Some(avg) = insights.avg_my_response %}
-        <div class="im-contact-modal-stat">
-            <span class="im-stat-value">~{{ avg }}</span>
-            <span class="im-stat-label">Your avg. response</span>
+        <div class="im-contact-modal-stats">
+            {% if let Some(avg) = insights.avg_their_response %}
+            <div class="im-contact-modal-stat">
+                <span class="im-stat-value">~{{ avg }}</span>
+                <span class="im-stat-label">Their avg. response</span>
+            </div>
+            {% endif %}
+            {% if let Some(avg) = insights.avg_my_response %}
+            <div class="im-contact-modal-stat">
+                <span class="im-stat-value">~{{ avg }}</span>
+                <span class="im-stat-label">Your avg. response</span>
+            </div>
+            {% endif %}
         </div>
-        {% endif %}
-    </div>
+    </section>
     {% endif %}
     {% if let Some(contact_id) = primary_contact_id %}
-    <p class="im-contact-modal-detail"><a href="/contacts/{{ contact_id }}">Open contact insights</a></p>
+    <section class="im-contact-modal-section im-contact-modal-section--action">
+        <a href="/contacts/{{ contact_id }}" class="im-contact-modal-action">Open full contact insights</a>
+    </section>
     {% endif %}
     {% endif %}
 </div>

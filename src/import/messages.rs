@@ -65,9 +65,17 @@ pub fn import_messages(
     eprintln!("Importing conversation participants...");
     import_conversation_participants(port_db, &participant_map, &handle_ids, &handle_id_map)?;
 
+    let conversation_id_map = build_conversation_id_map(port_db)?;
+
     let count = match since_rowid {
-        Some(hwm) => import_messages_incremental(&source_conn, port_db, &handle_id_map, hwm)?,
-        None => import_messages_full(&source_conn, port_db, &handle_id_map)?,
+        Some(hwm) => import_messages_incremental(
+            &source_conn,
+            port_db,
+            &handle_id_map,
+            &conversation_id_map,
+            hwm,
+        )?,
+        None => import_messages_full(&source_conn, port_db, &handle_id_map, &conversation_id_map)?,
     };
 
     port_db
@@ -100,6 +108,7 @@ fn import_messages_full(
     source_conn: &Connection,
     port_db: &mut Connection,
     handle_id_map: &HashMap<i64, i64>,
+    conversation_id_map: &HashMap<i64, i64>,
 ) -> Result<u64> {
     let context = QueryContext::default();
     let total = Message::get_count(source_conn, &context).map_err(|_| Error)?;
@@ -121,7 +130,12 @@ fn import_messages_full(
         let mut message = Message::extract(message_result).map_err(|_| Error)?;
         progress.inc(1);
 
-        if let Some(msg_row) = process_message(&mut message, source_conn, handle_id_map) {
+        if let Some(msg_row) = process_message(
+            &mut message,
+            source_conn,
+            handle_id_map,
+            conversation_id_map,
+        ) {
             batch.push(msg_row);
             count += 1;
         }
@@ -144,6 +158,7 @@ fn import_messages_incremental(
     source_conn: &Connection,
     port_db: &mut Connection,
     handle_id_map: &HashMap<i64, i64>,
+    conversation_id_map: &HashMap<i64, i64>,
     since_rowid: i64,
 ) -> Result<u64> {
     let total: i64 = source_conn
@@ -182,7 +197,12 @@ fn import_messages_incremental(
 
         progress.inc(1);
 
-        if let Some(msg_row) = process_message(&mut message, source_conn, handle_id_map) {
+        if let Some(msg_row) = process_message(
+            &mut message,
+            source_conn,
+            handle_id_map,
+            conversation_id_map,
+        ) {
             batch.push(msg_row);
             count += 1;
         }
@@ -205,6 +225,7 @@ fn process_message(
     message: &mut Message,
     source_conn: &Connection,
     handle_id_map: &HashMap<i64, i64>,
+    conversation_id_map: &HashMap<i64, i64>,
 ) -> Option<MessageRow> {
     let decoded = match message.generate_text(source_conn) {
         Ok(text) => Some(strip_apple_replacements(text)),
@@ -212,6 +233,7 @@ fn process_message(
     };
 
     let chat_id = message.chat_id? as i64;
+    let conversation_id = resolve_conversation_id(chat_id, conversation_id_map);
 
     let sender_id = message
         .handle_id
@@ -228,7 +250,7 @@ fn process_message(
     Some(MessageRow {
         apple_message_id: message.rowid as i64,
         guid: message.guid.clone(),
-        conversation_id: chat_id,
+        conversation_id,
         sender_id,
         is_from_me,
         body: decoded,
@@ -245,6 +267,64 @@ fn process_message(
         has_attachments: message.has_attachments(),
         balloon_bundle_id: message.balloon_bundle_id.clone(),
     })
+}
+
+fn build_conversation_id_map(port_db: &Connection) -> Result<HashMap<i64, i64>> {
+    let mut conversation_id_map = HashMap::new();
+
+    let mut conversation_stmt = port_db
+        .prepare("SELECT id FROM conversations")
+        .map_err(|err| {
+            eprintln!("Failed to read conversations: {err}");
+            Error
+        })?;
+    let conversation_rows = conversation_stmt
+        .query_map([], |row| row.get::<_, i64>(0))
+        .map_err(|err| {
+            eprintln!("Failed to stream conversations: {err}");
+            Error
+        })?;
+    for row in conversation_rows {
+        let conversation_id = row.map_err(|err| {
+            eprintln!("Failed to decode conversation row: {err}");
+            Error
+        })?;
+        conversation_id_map.insert(conversation_id, conversation_id);
+    }
+
+    let mut alias_stmt = port_db
+        .prepare(
+            "SELECT source_conversation_id, canonical_conversation_id FROM conversation_aliases",
+        )
+        .map_err(|err| {
+            eprintln!("Failed to read conversation aliases: {err}");
+            Error
+        })?;
+    let alias_rows = alias_stmt
+        .query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))
+        .map_err(|err| {
+            eprintln!("Failed to stream conversation aliases: {err}");
+            Error
+        })?;
+    for row in alias_rows {
+        let (source_conversation_id, canonical_conversation_id) = row.map_err(|err| {
+            eprintln!("Failed to decode conversation alias row: {err}");
+            Error
+        })?;
+        conversation_id_map.insert(source_conversation_id, canonical_conversation_id);
+    }
+
+    Ok(conversation_id_map)
+}
+
+fn resolve_conversation_id(
+    source_conversation_id: i64,
+    conversation_id_map: &HashMap<i64, i64>,
+) -> i64 {
+    conversation_id_map
+        .get(&source_conversation_id)
+        .copied()
+        .unwrap_or(source_conversation_id)
 }
 
 fn normalize_associated_guid(guid: Option<&str>) -> Option<String> {
@@ -281,10 +361,9 @@ fn import_contacts(
                      photo = COALESCE(excluded.photo, contacts.photo)",
             )
             .map_err(|_| Error)?;
-
         Handle::stream(source_conn, |result| {
             let handle = result.map_err(|_| Error)?;
-            let handle_id = handle.rowid as i64;
+            let source_handle_id = handle.rowid as i64;
 
             let contact_info = lookup_contact_info(&handle.id, contacts_map);
             let display_name = contact_info.as_ref().map(|ci| ci.display_name.as_str());
@@ -292,7 +371,7 @@ fn import_contacts(
 
             let _rows_affected = stmt
                 .execute((
-                    handle_id,
+                    source_handle_id,
                     &handle.id,
                     display_name,
                     None::<&str>,
@@ -300,13 +379,14 @@ fn import_contacts(
                     photo,
                 ))
                 .map_err(|_e| Error)?;
+            let destination_contact_id = get_contact_id_by_handle(&tx, &handle.id)?;
 
             if let Some(&canonical_id) = handle_to_canonical.get(&handle.id) {
-                handle_id_map.insert(handle_id, canonical_id);
+                handle_id_map.insert(source_handle_id, canonical_id);
             } else {
-                ids.insert(handle_id);
-                handle_to_canonical.insert(handle.id.clone(), handle_id);
-                handle_id_map.insert(handle_id, handle_id);
+                ids.insert(destination_contact_id);
+                handle_to_canonical.insert(handle.id.clone(), destination_contact_id);
+                handle_id_map.insert(source_handle_id, destination_contact_id);
             }
 
             Ok::<(), Error>(())
@@ -490,7 +570,10 @@ fn resolve_group_photo_path(source_conn: &Connection, guid: &str, home: &str) ->
 }
 
 fn insert_message_batch(port_db: &mut Connection, batch: &[MessageRow]) -> Result<()> {
-    let tx = port_db.transaction().map_err(|_| Error)?;
+    let tx = port_db.transaction().map_err(|err| {
+        eprintln!("Failed to start message insert transaction: {err}");
+        Error
+    })?;
     {
         let mut stmt = tx
             .prepare_cached(
@@ -498,7 +581,10 @@ fn insert_message_batch(port_db: &mut Connection, batch: &[MessageRow]) -> Resul
                     (apple_message_id, guid, conversation_id, sender_id, is_from_me, body, date_unix, service, is_reaction, reaction_type, associated_message_guid, reaction_emoji, thread_originator_guid, is_edited, has_attachments, balloon_bundle_id)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             )
-            .map_err(|_| Error)?;
+            .map_err(|err| {
+                eprintln!("Failed to prepare message batch insert: {err}");
+                Error
+            })?;
 
         for row in batch {
             stmt.execute((
@@ -519,11 +605,20 @@ fn insert_message_batch(port_db: &mut Connection, batch: &[MessageRow]) -> Resul
                 row.has_attachments,
                 row.balloon_bundle_id.as_deref(),
             ))
-            .map_err(|_| Error)?;
+            .map_err(|err| {
+                eprintln!(
+                    "Failed to insert message row {} (guid {}, conversation {}): {err}",
+                    row.apple_message_id, row.guid, row.conversation_id,
+                );
+                Error
+            })?;
         }
     }
 
-    tx.commit().map_err(|_| Error)?;
+    tx.commit().map_err(|err| {
+        eprintln!("Failed to commit message batch insert: {err}");
+        Error
+    })?;
     Ok(())
 }
 
@@ -553,4 +648,130 @@ fn strip_apple_replacements(text: &str) -> String {
     text.chars()
         .filter(|c| *c != '\u{FFFC}' && *c != '\u{FFFD}')
         .collect()
+}
+
+fn get_contact_id_by_handle(conn: &Connection, handle: &str) -> Result<i64> {
+    conn.query_row(
+        "SELECT id FROM contacts WHERE handle = ?1",
+        [handle],
+        |row| row.get(0),
+    )
+    .map_err(|err| {
+        eprintln!("Failed to look up contact by handle {handle}: {err}");
+        Error
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use rusqlite::Connection;
+
+    use super::*;
+    use crate::db::schema;
+
+    #[test]
+    fn test_build_conversation_id_map_includes_aliases() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema::create_all_tables(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO conversations (id, apple_chat_id, guid, is_group) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1_i64, 1_i64, "chat-1", false],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO conversation_aliases (source_conversation_id, canonical_conversation_id) VALUES (?1, ?2)",
+            rusqlite::params![2_i64, 1_i64],
+        )
+        .unwrap();
+
+        let conversation_id_map = build_conversation_id_map(&conn).unwrap();
+
+        assert_eq!(resolve_conversation_id(1, &conversation_id_map), 1);
+        assert_eq!(resolve_conversation_id(2, &conversation_id_map), 1);
+        assert_eq!(resolve_conversation_id(99, &conversation_id_map), 99);
+    }
+
+    #[test]
+    fn test_insert_message_batch_accepts_alias_remapped_conversation_id() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        schema::create_all_tables(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO conversations (id, apple_chat_id, guid, is_group) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![1_i64, 1_i64, "chat-1", false],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO conversation_aliases (source_conversation_id, canonical_conversation_id) VALUES (?1, ?2)",
+            rusqlite::params![2_i64, 1_i64],
+        )
+        .unwrap();
+
+        let conversation_id_map = build_conversation_id_map(&conn).unwrap();
+        let batch = vec![MessageRow {
+            apple_message_id: 42,
+            guid: "msg-42".to_string(),
+            conversation_id: resolve_conversation_id(2, &conversation_id_map),
+            sender_id: None,
+            is_from_me: true,
+            body: Some("hello".to_string()),
+            date_unix: 1_700_000_000,
+            service: Some("iMessage".to_string()),
+            is_reaction: false,
+            reaction_type: None,
+            associated_message_guid: None,
+            reaction_emoji: None,
+            thread_originator_guid: None,
+            is_edited: false,
+            has_attachments: false,
+            balloon_bundle_id: None,
+        }];
+
+        insert_message_batch(&mut conn, &batch).unwrap();
+
+        let inserted_conversation_id: i64 = conn
+            .query_row(
+                "SELECT conversation_id FROM messages WHERE apple_message_id = ?1",
+                [42_i64],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(inserted_conversation_id, 1);
+    }
+
+    #[test]
+    fn test_get_contact_id_by_handle_returns_existing_contact_id_after_upsert() {
+        let conn = Connection::open_in_memory().unwrap();
+        schema::create_all_tables(&conn).unwrap();
+
+        conn.execute(
+            "INSERT INTO contacts (id, handle, display_name) VALUES (?1, ?2, ?3)",
+            rusqlite::params![1792_i64, "+243848371296", "Existing"],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO contacts (id, handle, display_name, service, person_centric_id, photo)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+             ON CONFLICT(handle) DO UPDATE SET
+                 display_name = excluded.display_name,
+                 service = excluded.service,
+                 person_centric_id = excluded.person_centric_id,
+                 photo = COALESCE(excluded.photo, contacts.photo)",
+            rusqlite::params![
+                1862_i64,
+                "+243848371296",
+                "Updated",
+                None::<String>,
+                None::<String>,
+                None::<Vec<u8>>,
+            ],
+        )
+        .unwrap();
+
+        let contact_id = get_contact_id_by_handle(&conn, "+243848371296").unwrap();
+
+        assert_eq!(contact_id, 1792);
+    }
 }

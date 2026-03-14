@@ -2,6 +2,7 @@
 <div class="im-conversation-wrapper">
 <div class="im-chat-container">
     <header class="im-chat-header">
+        <div class="im-chat-header-side" aria-hidden="true"></div>
         <button class="im-chat-header-info{% if !is_group %} im-chat-header-info--solo{% endif %}" onclick="document.getElementById('contact-info-modal').classList.add('active')">
             <div class="im-avatar{% if is_group %} im-avatar--group{% endif %}">
                 {% if has_photo %}

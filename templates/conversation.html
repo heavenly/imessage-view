@@ -3,18 +3,17 @@
 {% block content %}
 <div class="im-sidebar">
     <div class="im-sidebar-header">
-        <div class="im-header-row">
-            <h1>iMessage</h1>
+        <div class="im-search-shell">
+            <input type="search"
+                   name="q"
+                   class="im-search"
+                   placeholder="Search"
+                   hx-get="/partials/unified-search"
+                   hx-trigger="input changed delay:300ms, search"
+                   hx-target="#conversations-list"
+                   hx-swap="innerHTML"
+                   hx-push-url="false">
         </div>
-        <input type="search"
-               name="q"
-               class="im-search"
-               placeholder="Search"
-               hx-get="/partials/unified-search"
-               hx-trigger="input changed delay:300ms, search"
-               hx-target="#conversations-list"
-               hx-swap="innerHTML"
-               hx-push-url="false">
     </div>
     <div id="conversations-list" class="im-conversation-list" hx-get="/partials/conversations" hx-trigger="load">
         <p>Loading...</p>

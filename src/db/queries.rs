@@ -24,9 +24,21 @@ pub struct MessageAttachment {
     pub id: i64,
     pub filename: Option<String>,
     pub mime_type: Option<String>,
+    pub uti: Option<String>,
     pub transfer_name: Option<String>,
     pub total_bytes: Option<i64>,
     pub is_sticker: bool,
+}
+
+impl MessageAttachment {
+    pub fn mime_category(&self) -> &'static str {
+        infer_attachment_category(
+            self.mime_type.as_deref(),
+            self.filename.as_deref(),
+            self.transfer_name.as_deref(),
+            self.uti.as_deref(),
+        )
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -695,7 +707,7 @@ pub fn get_message_attachments(
 
     let placeholders: Vec<String> = message_ids.iter().map(|_| "?".to_string()).collect();
     let sql = format!(
-        "SELECT id, message_id, filename, mime_type, transfer_name, total_bytes, is_sticker
+        "SELECT id, message_id, filename, mime_type, uti, transfer_name, total_bytes, is_sticker
          FROM attachments
          WHERE message_id IN ({})
          ORDER BY id",
@@ -716,9 +728,10 @@ pub fn get_message_attachments(
                     id: row.get(0)?,
                     filename: row.get(2)?,
                     mime_type: row.get(3)?,
-                    transfer_name: row.get(4)?,
-                    total_bytes: row.get(5)?,
-                    is_sticker: row.get::<_, bool>(6).unwrap_or(false),
+                    uti: row.get(4)?,
+                    transfer_name: row.get(5)?,
+                    total_bytes: row.get(6)?,
+                    is_sticker: row.get::<_, bool>(7).unwrap_or(false),
                 },
             ))
         })?
@@ -875,6 +888,7 @@ pub struct AttachmentRow {
     pub id: i64,
     pub filename: Option<String>,
     pub mime_type: Option<String>,
+    pub uti: Option<String>,
     pub total_bytes: Option<i64>,
     pub resolved_path: Option<String>,
     pub file_exists: bool,
@@ -905,12 +919,21 @@ impl AttachmentRow {
     }
 
     pub fn mime_category(&self) -> &str {
-        match self.mime_type.as_deref() {
-            Some(m) if m.starts_with("image/") => "image",
-            Some(m) if m.starts_with("video/") => "video",
-            Some(m) if m.starts_with("audio/") => "audio",
-            _ => "other",
-        }
+        infer_attachment_category(
+            self.mime_type.as_deref(),
+            self.filename.as_deref(),
+            self.transfer_name.as_deref(),
+            self.uti.as_deref(),
+        )
+    }
+
+    pub fn inferred_content_type(&self) -> &'static str {
+        infer_attachment_content_type(
+            self.mime_type.as_deref(),
+            self.filename.as_deref(),
+            self.transfer_name.as_deref(),
+            self.uti.as_deref(),
+        )
     }
 
     pub fn date_formatted(&self) -> String {
@@ -942,6 +965,246 @@ impl AttachmentRow {
     }
 }
 
+fn infer_attachment_category(
+    mime_type: Option<&str>,
+    filename: Option<&str>,
+    transfer_name: Option<&str>,
+    uti: Option<&str>,
+) -> &'static str {
+    media_category_from_mime(mime_type)
+        .or_else(|| media_category_from_extension(filename, transfer_name))
+        .or_else(|| media_category_from_uti(uti))
+        .unwrap_or("other")
+}
+
+fn infer_attachment_content_type(
+    mime_type: Option<&str>,
+    filename: Option<&str>,
+    transfer_name: Option<&str>,
+    uti: Option<&str>,
+) -> &'static str {
+    match mime_type.and_then(normalized_media_mime_type) {
+        Some(mime) => mime,
+        None => guessed_content_type_from_extension(filename, transfer_name)
+            .or_else(|| guessed_content_type_from_uti(uti))
+            .unwrap_or("application/octet-stream"),
+    }
+}
+
+fn normalized_media_mime_type(mime_type: &str) -> Option<&'static str> {
+    let mime = mime_type.trim().to_ascii_lowercase();
+    match mime.as_str() {
+        m if m.starts_with("image/") => Some(match m {
+            "image/jpg" => "image/jpeg",
+            "image/heif" => "image/heif",
+            "image/heic" => "image/heic",
+            "image/heic-sequence" => "image/heic-sequence",
+            "image/png" => "image/png",
+            "image/gif" => "image/gif",
+            "image/webp" => "image/webp",
+            "image/tiff" => "image/tiff",
+            "image/avif" => "image/avif",
+            _ => "image/jpeg",
+        }),
+        m if m.starts_with("video/") => Some(match m {
+            "video/quicktime" => "video/quicktime",
+            "video/mp4" => "video/mp4",
+            "video/3gpp" => "video/3gpp",
+            "video/webm" => "video/webm",
+            _ => "video/mp4",
+        }),
+        m if m.starts_with("audio/") => Some(match m {
+            "audio/mpeg" => "audio/mpeg",
+            "audio/mp4" => "audio/mp4",
+            "audio/aac" => "audio/aac",
+            "audio/wav" => "audio/wav",
+            "audio/amr" => "audio/amr",
+            _ => "audio/mpeg",
+        }),
+        _ => None,
+    }
+}
+
+fn media_category_from_mime(mime_type: Option<&str>) -> Option<&'static str> {
+    match mime_type?.trim().to_ascii_lowercase() {
+        mime if mime.starts_with("image/") => Some("image"),
+        mime if mime.starts_with("video/") => Some("video"),
+        mime if mime.starts_with("audio/") => Some("audio"),
+        _ => None,
+    }
+}
+
+fn media_category_from_extension(
+    filename: Option<&str>,
+    transfer_name: Option<&str>,
+) -> Option<&'static str> {
+    attachment_extension(transfer_name)
+        .or_else(|| attachment_extension(filename))
+        .and_then(|ext| match ext.as_str() {
+            "jpg" | "jpeg" | "png" | "gif" | "webp" | "heic" | "heif" | "tif" | "tiff" | "dng"
+            | "avif" => Some("image"),
+            "mov" | "mp4" | "m4v" | "3gp" | "avi" | "webm" => Some("video"),
+            "m4a" | "mp3" | "wav" | "aac" | "amr" | "caf" => Some("audio"),
+            _ => None,
+        })
+}
+
+fn media_category_from_uti(uti: Option<&str>) -> Option<&'static str> {
+    let uti = uti?.trim().to_ascii_lowercase();
+    if uti.starts_with("public.image")
+        || matches!(
+            uti.as_str(),
+            "public.heic"
+                | "public.heif"
+                | "public.jpeg"
+                | "public.png"
+                | "public.tiff"
+                | "public.webp"
+                | "com.compuserve.gif"
+                | "com.apple.private.auto-loop-gif"
+                | "com.apple.raw-image"
+        )
+    {
+        Some("image")
+    } else if uti.starts_with("public.movie") || uti.starts_with("public.video") {
+        Some("video")
+    } else if uti.starts_with("public.audio") {
+        Some("audio")
+    } else {
+        None
+    }
+}
+
+fn guessed_content_type_from_extension(
+    filename: Option<&str>,
+    transfer_name: Option<&str>,
+) -> Option<&'static str> {
+    attachment_extension(transfer_name)
+        .or_else(|| attachment_extension(filename))
+        .and_then(|ext| match ext.as_str() {
+            "jpg" | "jpeg" => Some("image/jpeg"),
+            "png" => Some("image/png"),
+            "gif" => Some("image/gif"),
+            "webp" => Some("image/webp"),
+            "heic" => Some("image/heic"),
+            "heif" => Some("image/heif"),
+            "tif" | "tiff" => Some("image/tiff"),
+            "dng" => Some("image/x-adobe-dng"),
+            "avif" => Some("image/avif"),
+            "mov" => Some("video/quicktime"),
+            "mp4" | "m4v" => Some("video/mp4"),
+            "3gp" => Some("video/3gpp"),
+            "webm" => Some("video/webm"),
+            "m4a" => Some("audio/mp4"),
+            "mp3" => Some("audio/mpeg"),
+            "wav" => Some("audio/wav"),
+            "aac" => Some("audio/aac"),
+            "amr" => Some("audio/amr"),
+            "caf" => Some("audio/x-caf"),
+            _ => None,
+        })
+}
+
+fn guessed_content_type_from_uti(uti: Option<&str>) -> Option<&'static str> {
+    let uti = uti?.trim().to_ascii_lowercase();
+    if uti.starts_with("public.image")
+        || matches!(uti.as_str(), "public.heic" | "public.heif" | "public.jpeg")
+    {
+        Some("image/jpeg")
+    } else if uti.starts_with("public.movie") || uti.starts_with("public.video") {
+        Some("video/mp4")
+    } else if uti.starts_with("public.audio") {
+        Some("audio/mpeg")
+    } else {
+        None
+    }
+}
+
+fn attachment_extension(name: Option<&str>) -> Option<String> {
+    Path::new(name?)
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(|ext| ext.to_ascii_lowercase())
+}
+
+fn attachment_category_sql(category: &str) -> String {
+    let image = attachment_category_predicate(
+        "image",
+        &[
+            "jpg", "jpeg", "png", "gif", "webp", "heic", "heif", "tif", "tiff", "dng", "avif",
+        ],
+        &["public.image"],
+        &[
+            "public.heic",
+            "public.heif",
+            "public.jpeg",
+            "public.png",
+            "public.tiff",
+            "public.webp",
+            "com.compuserve.gif",
+            "com.apple.private.auto-loop-gif",
+            "com.apple.raw-image",
+        ],
+    );
+    let video = attachment_category_predicate(
+        "video",
+        &["mov", "mp4", "m4v", "3gp", "avi", "webm"],
+        &["public.movie", "public.video"],
+        &[],
+    );
+    let audio = attachment_category_predicate(
+        "audio",
+        &["m4a", "mp3", "wav", "aac", "amr", "caf"],
+        &["public.audio"],
+        &[],
+    );
+
+    match category {
+        "image" => image,
+        "video" => video,
+        "audio" => audio,
+        "other" => format!("NOT (({image}) OR ({video}) OR ({audio}))"),
+        _ => "1 = 1".to_string(),
+    }
+}
+
+fn attachment_category_predicate(
+    mime_prefix: &str,
+    extensions: &[&str],
+    uti_prefixes: &[&str],
+    uti_exact: &[&str],
+) -> String {
+    let mime_predicate = format!("LOWER(COALESCE(a.mime_type, '')) LIKE '{mime_prefix}/%'");
+    let extension_predicate = attachment_extension_predicate(extensions);
+    let uti_predicate = attachment_uti_predicate(uti_prefixes, uti_exact);
+    format!("({mime_predicate} OR {extension_predicate} OR {uti_predicate})")
+}
+
+fn attachment_extension_predicate(extensions: &[&str]) -> String {
+    let clauses: Vec<String> = extensions
+        .iter()
+        .map(|ext| {
+            format!(
+                "LOWER(COALESCE(a.transfer_name, '')) LIKE '%.{ext}' OR LOWER(COALESCE(a.filename, '')) LIKE '%.{ext}'"
+            )
+        })
+        .collect();
+    format!("({})", clauses.join(" OR "))
+}
+
+fn attachment_uti_predicate(uti_prefixes: &[&str], uti_exact: &[&str]) -> String {
+    let mut clauses: Vec<String> = uti_prefixes
+        .iter()
+        .map(|prefix| format!("LOWER(COALESCE(a.uti, '')) LIKE '{prefix}%'"))
+        .collect();
+    clauses.extend(
+        uti_exact
+            .iter()
+            .map(|value| format!("LOWER(COALESCE(a.uti, '')) = '{value}'")),
+    );
+    format!("({})", clauses.join(" OR "))
+}
+
 pub fn list_attachments(
     conn: &Connection,
     mime_filter: Option<&str>,
@@ -953,26 +1216,26 @@ pub fn list_attachments(
 
     let (where_clause, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match mime_filter {
         Some("image") => (
-            format!("{} AND a.mime_type LIKE ?1", base_where),
-            vec![Box::new("image/%".to_string())],
+            format!("{} AND {}", base_where, attachment_category_sql("image")),
+            vec![],
         ),
         Some("video") => (
-            format!("{} AND a.mime_type LIKE ?1", base_where),
-            vec![Box::new("video/%".to_string())],
+            format!("{} AND {}", base_where, attachment_category_sql("video")),
+            vec![],
         ),
         Some("audio") => (
-            format!("{} AND a.mime_type LIKE ?1", base_where),
-            vec![Box::new("audio/%".to_string())],
+            format!("{} AND {}", base_where, attachment_category_sql("audio")),
+            vec![],
         ),
         Some("other") => (
-            format!("{} AND a.mime_type NOT LIKE 'image/%' AND a.mime_type NOT LIKE 'video/%' AND a.mime_type NOT LIKE 'audio/%'", base_where),
+            format!("{} AND {}", base_where, attachment_category_sql("other")),
             vec![],
         ),
         _ => (base_where.to_string(), vec![]),
     };
 
     let sql = format!(
-        "SELECT a.id, a.filename, a.mime_type, a.total_bytes, a.resolved_path,
+        "SELECT a.id, a.filename, a.mime_type, a.uti, a.total_bytes, a.resolved_path,
                 a.file_exists, a.transfer_name,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
                 m.date_unix,
@@ -995,15 +1258,16 @@ pub fn list_attachments(
                 id: row.get(0)?,
                 filename: row.get(1)?,
                 mime_type: row.get(2)?,
-                total_bytes: row.get(3)?,
-                resolved_path: row.get(4)?,
-                file_exists: row.get(5)?,
-                transfer_name: row.get(6)?,
-                conversation_name: row.get(7)?,
-                message_date: row.get(8)?,
-                conversation_id: row.get(9)?,
-                ck_sync_state: row.get(10)?,
-                backup_source_path: row.get(11)?,
+                uti: row.get(3)?,
+                total_bytes: row.get(4)?,
+                resolved_path: row.get(5)?,
+                file_exists: row.get(6)?,
+                transfer_name: row.get(7)?,
+                conversation_name: row.get(8)?,
+                message_date: row.get(9)?,
+                conversation_id: row.get(10)?,
+                ck_sync_state: row.get(11)?,
+                backup_source_path: row.get(12)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1013,7 +1277,7 @@ pub fn list_attachments(
 
 pub fn get_attachment(conn: &Connection, id: i64) -> anyhow::Result<Option<AttachmentRow>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.filename, a.mime_type, a.total_bytes, a.resolved_path,
+        "SELECT a.id, a.filename, a.mime_type, a.uti, a.total_bytes, a.resolved_path,
                 a.file_exists, a.transfer_name,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
                 m.date_unix,
@@ -1032,15 +1296,16 @@ pub fn get_attachment(conn: &Connection, id: i64) -> anyhow::Result<Option<Attac
                 id: row.get(0)?,
                 filename: row.get(1)?,
                 mime_type: row.get(2)?,
-                total_bytes: row.get(3)?,
-                resolved_path: row.get(4)?,
-                file_exists: row.get(5)?,
-                transfer_name: row.get(6)?,
-                conversation_name: row.get(7)?,
-                message_date: row.get(8)?,
-                conversation_id: row.get(9)?,
-                ck_sync_state: row.get(10)?,
-                backup_source_path: row.get(11)?,
+                uti: row.get(3)?,
+                total_bytes: row.get(4)?,
+                resolved_path: row.get(5)?,
+                file_exists: row.get(6)?,
+                transfer_name: row.get(7)?,
+                conversation_name: row.get(8)?,
+                message_date: row.get(9)?,
+                conversation_id: row.get(10)?,
+                ck_sync_state: row.get(11)?,
+                backup_source_path: row.get(12)?,
             })
         })
         .optional()?;
@@ -1052,22 +1317,41 @@ pub fn count_attachments(conn: &Connection, mime_filter: Option<&str>) -> anyhow
     let base_where = "(filename IS NULL OR filename NOT LIKE '%.pluginPayloadAttachment') AND (transfer_name IS NULL OR transfer_name NOT LIKE '%.pluginPayloadAttachment')";
     let (sql, params): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match mime_filter {
         Some("image") => (
-            format!("SELECT COUNT(*) FROM attachments WHERE {} AND mime_type LIKE ?1", base_where),
-            vec![Box::new("image/%".to_string())],
-        ),
-        Some("video") => (
-            format!("SELECT COUNT(*) FROM attachments WHERE {} AND mime_type LIKE ?1", base_where),
-            vec![Box::new("video/%".to_string())],
-        ),
-        Some("audio") => (
-            format!("SELECT COUNT(*) FROM attachments WHERE {} AND mime_type LIKE ?1", base_where),
-            vec![Box::new("audio/%".to_string())],
-        ),
-        Some("other") => (
-            format!("SELECT COUNT(*) FROM attachments WHERE {} AND mime_type NOT LIKE 'image/%' AND mime_type NOT LIKE 'video/%' AND mime_type NOT LIKE 'audio/%'", base_where),
+            format!(
+                "SELECT COUNT(*) FROM attachments a WHERE {} AND {}",
+                base_where,
+                attachment_category_sql("image")
+            ),
             vec![],
         ),
-        _ => (format!("SELECT COUNT(*) FROM attachments WHERE {}", base_where), vec![]),
+        Some("video") => (
+            format!(
+                "SELECT COUNT(*) FROM attachments a WHERE {} AND {}",
+                base_where,
+                attachment_category_sql("video")
+            ),
+            vec![],
+        ),
+        Some("audio") => (
+            format!(
+                "SELECT COUNT(*) FROM attachments a WHERE {} AND {}",
+                base_where,
+                attachment_category_sql("audio")
+            ),
+            vec![],
+        ),
+        Some("other") => (
+            format!(
+                "SELECT COUNT(*) FROM attachments a WHERE {} AND {}",
+                base_where,
+                attachment_category_sql("other")
+            ),
+            vec![],
+        ),
+        _ => (
+            format!("SELECT COUNT(*) FROM attachments a WHERE {}", base_where),
+            vec![],
+        ),
     };
 
     let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
@@ -1082,7 +1366,7 @@ pub fn conversation_attachments(
     limit: i64,
 ) -> anyhow::Result<Vec<AttachmentRow>> {
     let sql = format!(
-        "SELECT a.id, a.filename, a.mime_type, a.total_bytes, a.resolved_path,
+        "SELECT a.id, a.filename, a.mime_type, a.uti, a.total_bytes, a.resolved_path,
                 a.file_exists, a.transfer_name,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
                 m.date_unix,
@@ -1106,15 +1390,16 @@ pub fn conversation_attachments(
                 id: row.get(0)?,
                 filename: row.get(1)?,
                 mime_type: row.get(2)?,
-                total_bytes: row.get(3)?,
-                resolved_path: row.get(4)?,
-                file_exists: row.get(5)?,
-                transfer_name: row.get(6)?,
-                conversation_name: row.get(7)?,
-                message_date: row.get(8)?,
-                conversation_id: row.get(9)?,
-                ck_sync_state: row.get(10)?,
-                backup_source_path: row.get(11)?,
+                uti: row.get(3)?,
+                total_bytes: row.get(4)?,
+                resolved_path: row.get(5)?,
+                file_exists: row.get(6)?,
+                transfer_name: row.get(7)?,
+                conversation_name: row.get(8)?,
+                message_date: row.get(9)?,
+                conversation_id: row.get(10)?,
+                ck_sync_state: row.get(11)?,
+                backup_source_path: row.get(12)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1181,7 +1466,7 @@ pub fn get_missing_attachments(
     limit: i64,
 ) -> anyhow::Result<Vec<AttachmentRow>> {
     let sql = format!(
-        "SELECT a.id, a.filename, a.mime_type, a.total_bytes, a.resolved_path,
+        "SELECT a.id, a.filename, a.mime_type, a.uti, a.total_bytes, a.resolved_path,
                 a.file_exists, a.transfer_name,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
                 m.date_unix,
@@ -1206,15 +1491,16 @@ pub fn get_missing_attachments(
                 id: row.get(0)?,
                 filename: row.get(1)?,
                 mime_type: row.get(2)?,
-                total_bytes: row.get(3)?,
-                resolved_path: row.get(4)?,
-                file_exists: row.get(5)?,
-                transfer_name: row.get(6)?,
-                conversation_name: row.get(7)?,
-                message_date: row.get(8)?,
-                conversation_id: row.get(9)?,
-                ck_sync_state: row.get(10)?,
-                backup_source_path: row.get(11)?,
+                uti: row.get(3)?,
+                total_bytes: row.get(4)?,
+                resolved_path: row.get(5)?,
+                file_exists: row.get(6)?,
+                transfer_name: row.get(7)?,
+                conversation_name: row.get(8)?,
+                message_date: row.get(9)?,
+                conversation_id: row.get(10)?,
+                ck_sync_state: row.get(11)?,
+                backup_source_path: row.get(12)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -1224,7 +1510,7 @@ pub fn get_missing_attachments(
 
 pub fn all_attachments_for_repair(conn: &Connection) -> anyhow::Result<Vec<AttachmentRow>> {
     let mut stmt = conn.prepare(
-        "SELECT a.id, a.filename, a.mime_type, a.total_bytes, a.resolved_path,
+        "SELECT a.id, a.filename, a.mime_type, a.uti, a.total_bytes, a.resolved_path,
                 a.file_exists, a.transfer_name,
                 COALESCE(c.display_name, c.guid, 'Unknown') AS conversation_name,
                 m.date_unix,
@@ -1244,15 +1530,16 @@ pub fn all_attachments_for_repair(conn: &Connection) -> anyhow::Result<Vec<Attac
                 id: row.get(0)?,
                 filename: row.get(1)?,
                 mime_type: row.get(2)?,
-                total_bytes: row.get(3)?,
-                resolved_path: row.get(4)?,
-                file_exists: row.get(5)?,
-                transfer_name: row.get(6)?,
-                conversation_name: row.get(7)?,
-                message_date: row.get(8)?,
-                conversation_id: row.get(9)?,
-                ck_sync_state: row.get(10)?,
-                backup_source_path: row.get(11)?,
+                uti: row.get(3)?,
+                total_bytes: row.get(4)?,
+                resolved_path: row.get(5)?,
+                file_exists: row.get(6)?,
+                transfer_name: row.get(7)?,
+                conversation_name: row.get(8)?,
+                message_date: row.get(9)?,
+                conversation_id: row.get(10)?,
+                ck_sync_state: row.get(11)?,
+                backup_source_path: row.get(12)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;

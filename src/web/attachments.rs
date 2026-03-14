@@ -29,10 +29,7 @@ pub async fn download(
     let stream = ReaderStream::new(file);
     let body = Body::from_stream(stream);
 
-    let content_type = attachment
-        .mime_type
-        .as_deref()
-        .unwrap_or("application/octet-stream");
+    let content_type = attachment.inferred_content_type();
 
     let display = attachment.display_name().to_string();
     let disposition = format!("attachment; filename=\"{display}\"");
@@ -58,12 +55,9 @@ pub async fn preview(
     let attachment = attachment.ok_or(StatusCode::NOT_FOUND)?;
     let file_path = attachment.existing_path().ok_or(StatusCode::NOT_FOUND)?;
     let path = StdPath::new(file_path);
-    let content_type = attachment
-        .mime_type
-        .as_deref()
-        .unwrap_or("application/octet-stream");
+    let content_type = attachment.inferred_content_type();
 
-    if content_type.starts_with("image/") {
+    if attachment.mime_category() == "image" {
         if should_transcode_image_preview(&attachment) {
             let data = generate_image_preview(path, 1800)
                 .await

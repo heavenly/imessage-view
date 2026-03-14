@@ -268,27 +268,16 @@ pub async fn attachments_page(
             .unwrap_or_default()
             .into_iter()
             .map(|a| {
-                let is_image = a
-                    .mime_type
-                    .as_deref()
-                    .map(|m| m.starts_with("image/"))
-                    .unwrap_or(false);
-                let is_video = a
-                    .mime_type
-                    .as_deref()
-                    .map(|m| m.starts_with("video/"))
-                    .unwrap_or(false);
-                let is_audio = a
-                    .mime_type
-                    .as_deref()
-                    .map(|m| m.starts_with("audio/"))
-                    .unwrap_or(false);
+                let mime_category = a.mime_category().to_string();
+                let is_image = mime_category == "image";
+                let is_video = mime_category == "video";
+                let is_audio = mime_category == "audio";
                 let has_preview = is_image || is_video;
                 AttachmentView {
                     id: a.id,
                     display_name: a.display_name().to_string(),
                     mime_type: a.mime_type.clone(),
-                    mime_category: a.mime_category().to_string(),
+                    mime_category,
                     size: a.human_size(),
                     file_exists: a.is_available(),
                     conversation_name: a.conversation_name.clone(),

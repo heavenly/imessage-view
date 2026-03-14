@@ -1051,11 +1051,8 @@ pub async fn messages_partial(
                 .unwrap_or_default()
                 .into_iter()
                 .map(|a| {
+                    let is_image = a.mime_category() == "image";
                     let mime_type = a.mime_type;
-                    let is_image = mime_type
-                        .as_deref()
-                        .map(|mime| mime.starts_with("image/"))
-                        .unwrap_or(false);
 
                     AttachmentView {
                         id: a.id,
@@ -1464,11 +1461,7 @@ pub async fn conversation_attachments_partial(
             size: a.human_size(),
             file_exists: a.is_available(),
             date: a.date_formatted(),
-            is_image: a
-                .mime_type
-                .as_deref()
-                .map(|m| m.starts_with("image/"))
-                .unwrap_or(false),
+            is_image: a.mime_category() == "image",
         })
         .collect();
 

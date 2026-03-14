@@ -566,6 +566,7 @@ struct ConversationPanelTemplate {
     contact_name: String,
     is_group: bool,
     primary_contact_id: Option<i64>,
+    participant_count: usize,
     participant_summary: String,
     attachment_count: Option<i64>,
     has_photo: bool,
@@ -579,7 +580,7 @@ pub struct ConversationShellData {
     pub contact_name: String,
     pub is_group: bool,
     pub primary_contact_id: Option<i64>,
-    pub participants: Vec<String>,
+    pub participant_count: usize,
     pub participant_summary: String,
     pub has_photo: bool,
 }
@@ -604,7 +605,6 @@ struct ConversationInsightsTemplate {
     conversation_id: i64,
     is_group: bool,
     primary_contact_id: Option<i64>,
-    participants: Vec<String>,
     insights: ConversationInsightsData,
 }
 
@@ -634,8 +634,8 @@ pub fn build_conversation_shell(
         contact_name,
         is_group,
         primary_contact_id,
+        participant_count: participants.len(),
         participant_summary: format_group_participant_summary(&participants),
-        participants,
         has_photo,
     }
 }
@@ -736,6 +736,7 @@ pub async fn conversation_panel_partial(
         contact_name: shell.contact_name,
         is_group: shell.is_group,
         primary_contact_id: shell.primary_contact_id,
+        participant_count: shell.participant_count,
         participant_summary: shell.participant_summary,
         attachment_count: None,
         has_photo: shell.has_photo,
@@ -773,7 +774,6 @@ pub async fn conversation_insights_partial(
         conversation_id: id,
         is_group: shell.is_group,
         primary_contact_id: shell.primary_contact_id,
-        participants: shell.participants,
         insights,
     };
     Html(t.render().unwrap_or_default())

@@ -185,15 +185,6 @@
         </div>
     </section>
     {% endif %}
-    <section class="im-contact-modal-section">
-        <div class="im-contact-modal-section-top">
-            <div>
-                <p class="im-contact-modal-section-label">People</p>
-                <h3 class="im-contact-modal-section-title">{{ participants.len() }} participants</h3>
-            </div>
-        </div>
-        <p class="im-contact-modal-participants">{{ participants.join(", ") }}</p>
-    </section>
     {% else %}
     {% if insights.avg_their_response.is_some() || insights.avg_my_response.is_some() %}
     <section class="im-contact-modal-section">

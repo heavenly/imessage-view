@@ -355,23 +355,48 @@ body {
 
 .im-chat-header-actions {
     display: flex;
+    align-items: center;
     gap: 8px;
 }
 
+.im-chat-header-count {
+    position: absolute;
+    right: -3px;
+    bottom: -2px;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--im-accent) 88%, white) 0%, var(--im-accent) 100%);
+    border: 2px solid var(--im-bg-primary);
+    box-shadow: 0 8px 18px color-mix(in srgb, var(--im-accent) 26%, transparent);
+    color: var(--im-text-inverse);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+    letter-spacing: -0.01em;
+    pointer-events: none;
+}
+
 .im-header-btn {
+    position: relative;
     background: none;
     border: none;
     padding: 8px;
     cursor: pointer;
     border-radius: 50%;
     font-size: 16px;
-    opacity: 0.7;
-    transition: opacity 0.15s;
+    opacity: 0.78;
+    transition: opacity 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 
 .im-header-btn:hover {
     opacity: 1;
     background: var(--im-bg-secondary);
+    transform: translateY(-1px);
 }
 
 /* Header row for sidebar */
@@ -517,6 +542,7 @@ body {
 .im-message {
     display: flex;
     flex-direction: column;
+    width: fit-content;
     max-width: 70%;
 }
 
@@ -531,6 +557,7 @@ body {
 /* Message Bubbles */
 .im-message-bubble {
     position: relative;
+    width: 100%;
     padding: 8px 14px;
     border-radius: 18px;
     font-size: 14px;
@@ -1614,13 +1641,6 @@ body {
     font-size: 13px;
     color: var(--im-text-secondary);
     margin: 0;
-}
-
-.im-contact-modal-participants {
-    font-size: 13px;
-    color: var(--im-text-secondary);
-    margin: 0;
-    line-height: 1.55;
 }
 
 .im-contact-modal-stats {

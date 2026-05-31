@@ -1,4 +1,5 @@
 pub mod attachments;
+pub mod export;
 pub mod format;
 pub mod pages;
 pub mod partials;
@@ -14,6 +15,7 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route("/", get(pages::index))
         .route("/conversations/{id}", get(pages::conversation))
+        .route("/conversations/{id}/export", get(export::export_messages))
         .route("/conversations/{id}/photo", get(pages::conversation_photo))
         .route("/contacts/{id}", get(pages::contact_insights))
         .route("/contacts/{id}/photo", get(pages::contact_photo))

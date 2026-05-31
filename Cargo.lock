@@ -817,6 +817,7 @@ dependencies = [
  "plist",
  "rusqlite",
  "serde",
+ "serde_json",
  "sha1",
  "tempfile",
  "tokio",

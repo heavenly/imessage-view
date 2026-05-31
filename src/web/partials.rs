@@ -262,6 +262,14 @@ pub struct GroupParticipantStatView {
     pub has_photo: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct ExportParticipantView {
+    pub contact_id: i64,
+    pub name: String,
+    pub initial: String,
+    pub has_photo: bool,
+}
+
 pub fn build_group_participant_stat_views(
     conn: &rusqlite::Connection,
     conversation_id: i64,
@@ -571,6 +579,7 @@ struct ConversationPanelTemplate {
     attachment_count: Option<i64>,
     has_photo: bool,
     focus_message_id: Option<i64>,
+    export_participants: Vec<ExportParticipantView>,
 }
 
 #[derive(Debug, Clone)]
@@ -583,6 +592,7 @@ pub struct ConversationShellData {
     pub participant_count: usize,
     pub participant_summary: String,
     pub has_photo: bool,
+    pub export_participants: Vec<ExportParticipantView>,
 }
 
 #[derive(Debug, Clone)]
@@ -628,6 +638,20 @@ pub fn build_conversation_shell(
         Err(_) => ("Unknown".to_string(), false, vec![], false),
     };
 
+    let export_participants = queries::get_conversation_participants(conn, conversation_id)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|participant| {
+            let name = format_contact_value(&participant.name);
+            ExportParticipantView {
+                contact_id: participant.contact_id,
+                initial: display_initial(&name),
+                name,
+                has_photo: participant.has_photo,
+            }
+        })
+        .collect();
+
     ConversationShellData {
         conversation_id,
         contact_initial: display_initial(&contact_name),
@@ -637,6 +661,7 @@ pub fn build_conversation_shell(
         participant_count: participants.len(),
         participant_summary: format_group_participant_summary(&participants),
         has_photo,
+        export_participants,
     }
 }
 
@@ -741,6 +766,7 @@ pub async fn conversation_panel_partial(
         attachment_count: None,
         has_photo: shell.has_photo,
         focus_message_id: params.focus,
+        export_participants: shell.export_participants,
     };
     Html(t.render().unwrap_or_default())
 }

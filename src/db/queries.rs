@@ -1,6 +1,5 @@
 use chrono::NaiveDate;
-use rusqlite::Connection;
-use rusqlite::OptionalExtension;
+use rusqlite::{Connection, OptionalExtension, ToSql};
 use serde::Serialize;
 use std::collections::HashMap;
 use std::path::Path;
@@ -84,6 +83,40 @@ pub struct ConversationInfo {
     pub is_group: bool,
     pub participant_names: Vec<String>,
     pub has_photo: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ConversationParticipantRow {
+    pub contact_id: i64,
+    pub name: String,
+    pub has_photo: bool,
+}
+
+pub fn get_conversation_participants(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Vec<ConversationParticipantRow>> {
+    let mut stmt = conn.prepare(
+        "SELECT ct.id,
+                COALESCE(NULLIF(ct.display_name, ''), ct.handle) AS name,
+                (ct.photo IS NOT NULL) AS has_photo
+         FROM conversation_participants cp
+         JOIN contacts ct ON ct.id = cp.contact_id
+         WHERE cp.conversation_id = ?1
+         ORDER BY name",
+    )?;
+
+    let rows = stmt
+        .query_map([conversation_id], |row| {
+            Ok(ConversationParticipantRow {
+                contact_id: row.get(0)?,
+                name: row.get(1)?,
+                has_photo: row.get::<_, bool>(2).unwrap_or(false),
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
 }
 
 pub fn get_conversation_info(
@@ -640,6 +673,96 @@ pub fn get_messages_after(
             rusqlite::params![conversation_id, anchor_date, anchor_id, limit],
             map_message_row,
         )?
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(rows)
+}
+
+pub enum ExportMessageFilter<'a> {
+    All,
+    Mine,
+    Others,
+    Selected {
+        include_me: bool,
+        contact_ids: &'a [i64],
+    },
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExportMessageRow {
+    pub text: String,
+    pub date_unix: i64,
+}
+
+pub fn export_messages(
+    conn: &Connection,
+    conversation_id: i64,
+    filter: ExportMessageFilter<'_>,
+) -> anyhow::Result<Vec<ExportMessageRow>> {
+    let mut sql = String::from(
+        "SELECT m.body, m.date_unix
+         FROM messages m
+         WHERE m.conversation_id = ?1
+           AND m.is_reaction = FALSE
+           AND m.body IS NOT NULL
+           AND TRIM(m.body) <> ''",
+    );
+    let mut params: Vec<Box<dyn ToSql>> = vec![Box::new(conversation_id)];
+
+    match filter {
+        ExportMessageFilter::All => {}
+        ExportMessageFilter::Mine => {
+            sql.push_str(" AND m.is_from_me = TRUE");
+        }
+        ExportMessageFilter::Others => {
+            sql.push_str(" AND m.is_from_me = FALSE");
+        }
+        ExportMessageFilter::Selected {
+            include_me,
+            contact_ids,
+        } => {
+            let mut filters = Vec::new();
+            if include_me {
+                filters.push("m.is_from_me = TRUE".to_string());
+            }
+            if !contact_ids.is_empty() {
+                let placeholders = contact_ids
+                    .iter()
+                    .map(|id| {
+                        params.push(Box::new(*id));
+                        format!("?{}", params.len())
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                filters.push(format!(
+                    "(m.is_from_me = FALSE AND m.sender_id IN ({placeholders}))"
+                ));
+            }
+
+            if filters.is_empty() {
+                return Ok(Vec::new());
+            }
+
+            sql.push_str(" AND (");
+            sql.push_str(&filters.join(" OR "));
+            sql.push(')');
+        }
+    }
+
+    sql.push_str(" ORDER BY m.date_unix ASC, m.id ASC");
+
+    let mut stmt = conn.prepare(&sql)?;
+    let params_ref: Vec<&dyn ToSql> = params
+        .iter()
+        .map(|param| param.as_ref() as &dyn ToSql)
+        .collect();
+    let rows = stmt
+        .query_map(params_ref.as_slice(), |row| {
+            Ok(ExportMessageRow {
+                text: row.get(0)?,
+                date_unix: row.get(1)?,
+            })
+        })?
         .collect::<Result<Vec<_>, _>>()?;
 
     Ok(rows)
@@ -2169,6 +2292,117 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         schema::create_all_tables(&conn).unwrap();
         conn
+    }
+
+    fn export_texts(rows: &[ExportMessageRow]) -> Vec<&str> {
+        rows.iter().map(|row| row.text.as_str()).collect()
+    }
+
+    fn seed_export_messages(conn: &Connection) {
+        conn.execute(
+            "INSERT INTO contacts (id, handle, display_name) VALUES (1, '+15550000001', 'Alice')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO contacts (id, handle, display_name) VALUES (2, '+15550000002', 'Bob')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO conversations (id, guid, display_name, is_group) VALUES (10, 'chat10', 'Group', 1)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO conversations (id, guid, display_name, is_group) VALUES (11, 'chat11', 'Other', 0)",
+            [],
+        )
+        .unwrap();
+        for contact_id in [1_i64, 2_i64] {
+            conn.execute(
+                "INSERT INTO conversation_participants (conversation_id, contact_id) VALUES (10, ?1)",
+                [contact_id],
+            )
+            .unwrap();
+        }
+
+        for (id, guid, sender_id, is_from_me, body, date_unix, is_reaction, conversation_id) in [
+            (1, "m1", None, true, Some("mine"), 100, false, 10),
+            (2, "m2", Some(1), false, Some("alice"), 101, false, 10),
+            (3, "m3", Some(2), false, Some("bob"), 102, false, 10),
+            (4, "m4", Some(1), false, Some("reaction"), 103, true, 10),
+            (5, "m5", Some(1), false, None, 104, false, 10),
+            (6, "m6", Some(2), false, Some("   "), 105, false, 10),
+            (7, "m7", None, true, Some("other chat"), 106, false, 11),
+        ] {
+            conn.execute(
+                "INSERT INTO messages (id, guid, conversation_id, sender_id, is_from_me, body, date_unix, is_reaction)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    id,
+                    guid,
+                    conversation_id,
+                    sender_id,
+                    is_from_me,
+                    body,
+                    date_unix,
+                    is_reaction
+                ],
+            )
+            .unwrap();
+        }
+    }
+
+    #[test]
+    fn test_export_messages_filters_scope_and_people() {
+        let conn = test_conn();
+        seed_export_messages(&conn);
+
+        let all = export_messages(&conn, 10, ExportMessageFilter::All).unwrap();
+        assert_eq!(export_texts(&all), vec!["mine", "alice", "bob"]);
+
+        let mine = export_messages(&conn, 10, ExportMessageFilter::Mine).unwrap();
+        assert_eq!(export_texts(&mine), vec!["mine"]);
+
+        let others = export_messages(&conn, 10, ExportMessageFilter::Others).unwrap();
+        assert_eq!(export_texts(&others), vec!["alice", "bob"]);
+
+        let selected_alice = export_messages(
+            &conn,
+            10,
+            ExportMessageFilter::Selected {
+                include_me: false,
+                contact_ids: &[1],
+            },
+        )
+        .unwrap();
+        assert_eq!(export_texts(&selected_alice), vec!["alice"]);
+
+        let selected_me_and_bob = export_messages(
+            &conn,
+            10,
+            ExportMessageFilter::Selected {
+                include_me: true,
+                contact_ids: &[2],
+            },
+        )
+        .unwrap();
+        assert_eq!(export_texts(&selected_me_and_bob), vec!["mine", "bob"]);
+
+        let selected_empty = export_messages(
+            &conn,
+            10,
+            ExportMessageFilter::Selected {
+                include_me: false,
+                contact_ids: &[],
+            },
+        )
+        .unwrap();
+        assert!(
+            selected_empty.is_empty(),
+            "expected empty export for empty selected people"
+        );
     }
 
     #[test]

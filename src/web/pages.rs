@@ -8,7 +8,7 @@ use crate::db::queries;
 use crate::state::AppState;
 
 use super::format::{display_initial, format_contact_label, format_contact_value};
-use super::partials::build_conversation_shell;
+use super::partials::{build_conversation_shell, ExportParticipantView};
 
 fn canonical_conversation_id(conn: &rusqlite::Connection, conversation_id: i64) -> i64 {
     queries::resolve_canonical_conversation_id(conn, conversation_id)
@@ -134,6 +134,7 @@ struct ConversationTemplate {
     attachment_count: Option<i64>,
     has_photo: bool,
     focus_message_id: Option<i64>,
+    export_participants: Vec<ExportParticipantView>,
 }
 
 #[derive(Deserialize)]
@@ -170,6 +171,7 @@ pub async fn conversation(
         attachment_count: None,
         has_photo: shell.has_photo,
         focus_message_id: params.focus,
+        export_participants: shell.export_participants,
     };
     Html(t.render().unwrap_or_default()).into_response()
 }

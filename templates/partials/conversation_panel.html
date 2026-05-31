@@ -22,6 +22,9 @@
             </div>
         </button>
         <div class="im-chat-header-actions">
+            <button class="im-header-btn" title="Export messages" aria-label="Export messages" onclick="openExportMessagesModal()">
+                <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </button>
             <button class="im-header-btn im-header-btn--toggle-sidebar" title="Toggle Sidebar" onclick="toggleSidebar()">
                 <svg viewBox="0 0 24 24" width="24" height="24" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round" class="sidebar-chevron"><polyline points="15 18 9 12 15 6"></polyline></svg>
                 <span class="im-chat-header-count" aria-label="{{ participant_count }} participants">{{ participant_count }}</span>
@@ -71,6 +74,65 @@
     </div>
 </aside>
 </div>
+</div>
+
+<div id="export-messages-modal" class="modal-overlay" onclick="if(event.target===this)closeExportMessagesModal()">
+    <div class="modal-content im-contact-modal im-export-modal">
+        <button class="modal-close" onclick="closeExportMessagesModal()">&times;</button>
+        <div class="im-contact-modal-body">
+            <div class="im-contact-modal-heading im-export-modal-heading">
+                <p class="im-contact-modal-kicker">Export messages</p>
+                <h2 class="im-contact-modal-name">Download JSON</h2>
+                <p class="im-contact-modal-detail">Exports text messages as a JSON list with <code>text</code> and <code>datetime</code>. Reactions and attachment-only messages are skipped.</p>
+            </div>
+            <form class="im-export-form" action="/conversations/{{ conversation_id }}/export" method="get" target="im-export-download-frame" onsubmit="closeExportMessagesModal()">
+                <div class="im-export-section">
+                    <p class="im-export-label">Whose messages?</p>
+                    <label class="im-export-option">
+                        <input type="radio" name="scope" value="both" checked>
+                        <span><strong>Both sides</strong><small>Every text message in this conversation.</small></span>
+                    </label>
+                    <label class="im-export-option">
+                        <input type="radio" name="scope" value="me">
+                        <span><strong>My side</strong><small>Only messages sent from this Mac/iCloud account.</small></span>
+                    </label>
+                    <label class="im-export-option">
+                        <input type="radio" name="scope" value="others">
+                        <span><strong>Other side</strong><small>Everyone else in the conversation.</small></span>
+                    </label>
+                    <label class="im-export-option">
+                        <input type="radio" name="scope" value="selected">
+                        <span><strong>Selected people</strong><small>Use the checkboxes below.</small></span>
+                    </label>
+                </div>
+                <div class="im-export-section">
+                    <p class="im-export-label">People for selected export</p>
+                    <div class="im-export-people">
+                        <label class="im-export-person">
+                            <input type="checkbox" name="include_me" value="1" checked onchange="selectExportScope('selected')">
+                            <span class="im-export-person-avatar">Me</span>
+                            <span class="im-export-person-name">Me</span>
+                        </label>
+                        {% for participant in export_participants %}
+                        <label class="im-export-person">
+                            <input type="checkbox" name="participant_id" value="{{ participant.contact_id }}" checked onchange="selectExportScope('selected')">
+                            <span class="im-export-person-avatar">
+                                {% if participant.has_photo %}
+                                <img src="/contacts/{{ participant.contact_id }}/photo" alt="">
+                                {% else %}
+                                {{ participant.initial }}
+                                {% endif %}
+                            </span>
+                            <span class="im-export-person-name">{{ participant.name }}</span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                </div>
+                <button class="im-export-submit" type="submit">Download JSON</button>
+            </form>
+            <iframe name="im-export-download-frame" class="im-export-download-frame" title="Export download"></iframe>
+        </div>
+    </div>
 </div>
 
 <div id="contact-info-modal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('active')">
@@ -125,6 +187,36 @@
 </div>
 
 <script>
+window.openExportMessagesModal = function() {
+    var modal = document.getElementById('export-messages-modal');
+    if (modal) {
+        modal.classList.add('active');
+    }
+};
+
+window.closeExportMessagesModal = function() {
+    var modal = document.getElementById('export-messages-modal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+};
+
+window.selectExportScope = function(scope) {
+    var option = document.querySelector('#export-messages-modal input[name="scope"][value="' + scope + '"]');
+    if (option) {
+        option.checked = true;
+    }
+};
+
+if (!document.body.dataset.imExportModalBound) {
+    document.body.dataset.imExportModalBound = '1';
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Escape') {
+            window.closeExportMessagesModal();
+        }
+    });
+}
+
 if (typeof window.openPreview === 'undefined') {
     window.openPreview = function(id, type, previewUrl, downloadUrl) {
         const modal = document.getElementById('media-preview-modal');

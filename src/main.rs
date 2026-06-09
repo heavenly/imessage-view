@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 
 mod db;
 mod error;
+mod findmy;
 mod import;
 mod recovery;
 mod search;
@@ -28,7 +29,12 @@ enum Commands {
         full: bool,
     },
     /// Start the web server
-    Serve,
+    Serve {
+        #[arg(long, help = "Path to the 32-byte Find My LocalStorage.key file")]
+        findmy_key: Option<PathBuf>,
+        #[arg(long, help = "Override path to Find My LocalStorage.db")]
+        findmy_db: Option<PathBuf>,
+    },
     /// Scan iOS backup for missing attachments
     ScanIosBackup {
         #[arg(long, help = "Path to iOS backup directory")]
@@ -48,7 +54,7 @@ enum Commands {
     },
 }
 
-fn serve() -> anyhow::Result<()> {
+fn serve(findmy_key: Option<PathBuf>, findmy_db: Option<PathBuf>) -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
@@ -61,9 +67,15 @@ fn serve() -> anyhow::Result<()> {
     }
 
     let conn = db::open_existing(&db_path)?;
+    let findmy = findmy_key
+        .map(|key_path| findmy::FindMyConfig::new(key_path, findmy_db))
+        .transpose()?
+        .or_else(|| findmy::default_config_from_saved_key().ok().flatten());
+
     let state = state::AppState {
         db: Arc::new(Mutex::new(conn)),
         conversation_insights_cache: Arc::new(RwLock::new(HashMap::new())),
+        findmy: Arc::new(RwLock::new(findmy)),
     };
 
     let app = web::router().with_state(state);
@@ -327,8 +339,11 @@ fn main() {
                 std::process::exit(1);
             }
         }
-        Commands::Serve => {
-            if let Err(err) = serve() {
+        Commands::Serve {
+            findmy_key,
+            findmy_db,
+        } => {
+            if let Err(err) = serve(findmy_key, findmy_db) {
                 eprintln!("serve failed: {err}");
                 std::process::exit(1);
             }

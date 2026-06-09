@@ -5,7 +5,7 @@ pub mod pages;
 pub mod partials;
 pub mod recovery;
 
-use axum::routing::get;
+use axum::routing::{get, post};
 use axum::Router;
 use tower_http::services::ServeDir;
 
@@ -19,6 +19,8 @@ pub fn router() -> Router<AppState> {
         .route("/conversations/{id}/photo", get(pages::conversation_photo))
         .route("/contacts/{id}", get(pages::contact_insights))
         .route("/contacts/{id}/photo", get(pages::contact_photo))
+        .route("/findmy", get(pages::findmy))
+        .route("/findmy/extract-key", post(pages::extract_findmy_key))
         .route("/search", get(pages::search))
         .route("/attachments", get(pages::attachments_page))
         .route("/attachments/download/{id}", get(attachments::download))

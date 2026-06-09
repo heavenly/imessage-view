@@ -1854,6 +1854,96 @@ pub fn get_contact_photo(conn: &Connection, contact_id: i64) -> anyhow::Result<O
     Ok(photo)
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct ContactLookupRow {
+    pub id: i64,
+    pub name: String,
+    pub handle: String,
+    pub has_photo: bool,
+}
+
+pub fn find_contact_by_handle(
+    conn: &Connection,
+    handle: &str,
+) -> anyhow::Result<Option<ContactLookupRow>> {
+    let variants = contact_handle_variants(handle);
+    if variants.is_empty() {
+        return Ok(None);
+    }
+
+    let placeholders = (0..variants.len())
+        .map(|idx| format!("?{}", idx + 1))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "SELECT id,
+                COALESCE(NULLIF(display_name, ''), handle) AS name,
+                handle,
+                (photo IS NOT NULL) AS has_photo
+         FROM contacts
+         WHERE handle IN ({placeholders})
+            OR LOWER(handle) IN ({placeholders})
+         ORDER BY CASE WHEN NULLIF(display_name, '') IS NOT NULL THEN 0 ELSE 1 END,
+                  id
+         LIMIT 1",
+    );
+    let params = variants
+        .iter()
+        .map(|value| value as &dyn ToSql)
+        .collect::<Vec<_>>();
+
+    let row = conn
+        .query_row(&sql, params.as_slice(), |row| {
+            Ok(ContactLookupRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                handle: row.get(2)?,
+                has_photo: row.get::<_, bool>(3).unwrap_or(false),
+            })
+        })
+        .optional()?;
+
+    Ok(row)
+}
+
+fn contact_handle_variants(handle: &str) -> Vec<String> {
+    let trimmed = handle.trim();
+    if trimmed.is_empty() {
+        return Vec::new();
+    }
+
+    let mut variants = Vec::new();
+    push_unique(&mut variants, trimmed.to_string());
+
+    if trimmed.contains('@') {
+        push_unique(&mut variants, trimmed.to_lowercase());
+        return variants;
+    }
+
+    let digits = trimmed
+        .chars()
+        .filter(|ch| ch.is_ascii_digit())
+        .collect::<String>();
+    if !digits.is_empty() {
+        push_unique(&mut variants, digits.clone());
+        if digits.len() == 11 && digits.starts_with('1') {
+            push_unique(&mut variants, digits[1..].to_string());
+        }
+        if digits.len() == 10 {
+            push_unique(&mut variants, format!("+1{digits}"));
+            push_unique(&mut variants, format!("1{digits}"));
+        }
+    }
+
+    variants
+}
+
+fn push_unique(values: &mut Vec<String>, value: String) {
+    if !values.iter().any(|existing| existing == &value) {
+        values.push(value);
+    }
+}
+
 #[derive(Debug, Serialize)]
 pub struct GroupParticipantStat {
     pub contact_id: Option<i64>,

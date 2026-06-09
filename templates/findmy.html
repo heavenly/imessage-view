@@ -1,0 +1,276 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="im-findmy">
+    <aside class="im-findmy-panel">
+        <div class="im-findmy-header">
+            <a class="im-findmy-back" href="/" title="Back to messages">
+                <svg viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></svg>
+            </a>
+            <div>
+                <h1>Find My</h1>
+                <p>{{ updated_at }}</p>
+            </div>
+            <a class="im-findmy-refresh" href="/findmy" title="Refresh">
+                <svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.5 6.2"/><path d="M3 12A9 9 0 0 1 18.5 5.8"/><path d="M18 2v4h-4"/><path d="M6 22v-4h4"/></svg>
+            </a>
+        </div>
+
+        {% if !is_configured %}
+        <div class="im-findmy-notice">
+            <h2>Find My key required</h2>
+            <p>Start the server with <code>cargo run -- serve --findmy-key /path/to/LocalStorage.key</code>, or extract it here.</p>
+        </div>
+        {% endif %}
+
+        {% if status_message.len() > 0 %}
+        <div class="im-findmy-notice">
+            <h2>Key extraction</h2>
+            <p>{{ status_message }}</p>
+        </div>
+        {% endif %}
+
+        {% if has_error %}
+        <div class="im-findmy-notice im-findmy-notice--error">
+            <h2>Unable to read locations</h2>
+            <p>{{ error_message }}</p>
+        </div>
+        {% endif %}
+
+        {% if show_extract_button %}
+        <form class="im-findmy-extract" action="/findmy/extract-key" method="post">
+            <button type="submit">Extract Find My Key</button>
+            <p>Opens Find My and attaches LLDB to <code>findmylocateagent</code>. macOS normally blocks this unless SIP/AMFI debugging restrictions are already relaxed.</p>
+        </form>
+        {% endif %}
+
+        {% if locations.len() == 0 %}
+        <div class="im-findmy-empty">
+            <p>No current friend locations loaded.</p>
+        </div>
+        {% endif %}
+
+        <div class="im-findmy-list">
+            {% for location in locations %}
+            <button class="im-findmy-person" type="button" data-findmy-index="{{ loop.index0 }}">
+                <span class="im-findmy-avatar">
+                    {% if location.has_photo %}
+                    <img src="{{ location.photo_url }}" alt="">
+                    {% else %}
+                    {{ location.initial }}
+                    {% endif %}
+                </span>
+                <span class="im-findmy-person-main">
+                    <strong>{{ location.display_name }}</strong>
+                    <span>{{ location.location_label }} · {{ location.relative_time }}</span>
+                </span>
+                <span class="im-findmy-accuracy">{{ location.accuracy_label }}</span>
+            </button>
+            {% endfor %}
+        </div>
+    </aside>
+
+    <main class="im-findmy-map-shell">
+        <div class="im-findmy-map-controls" aria-label="Map controls">
+            <button type="button" id="findmy-zoom-in" title="Zoom in">+</button>
+            <button type="button" id="findmy-zoom-out" title="Zoom out">-</button>
+        </div>
+        <div id="findmy-map" class="im-findmy-map"></div>
+        <div id="findmy-card" class="im-findmy-card" hidden></div>
+    </main>
+</div>
+
+<script>
+(function() {
+    var locations = {{ locations_json|safe }};
+    var map = document.getElementById('findmy-map');
+    var card = document.getElementById('findmy-card');
+    var zoom = 12;
+    var tileSize = 256;
+    var selectedIndex = -1;
+    var hasFit = false;
+    var drag = null;
+    var center = locations.length ? {
+        latitude: locations.reduce(function(sum, item) { return sum + item.latitude; }, 0) / locations.length,
+        longitude: locations.reduce(function(sum, item) { return sum + item.longitude; }, 0) / locations.length
+    } : { latitude: 37.3349, longitude: -122.0090 };
+
+    function project(latitude, longitude, z) {
+        var sin = Math.sin(latitude * Math.PI / 180);
+        var scale = tileSize * Math.pow(2, z);
+        return {
+            x: (longitude + 180) / 360 * scale,
+            y: (0.5 - Math.log((1 + sin) / (1 - sin)) / (4 * Math.PI)) * scale
+        };
+    }
+
+    function unproject(x, y, z) {
+        var scale = tileSize * Math.pow(2, z);
+        var longitude = x / scale * 360 - 180;
+        var n = Math.PI - 2 * Math.PI * y / scale;
+        var latitude = 180 / Math.PI * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+        return { latitude: latitude, longitude: longitude };
+    }
+
+    function clampZoom(value) {
+        return Math.max(2, Math.min(18, value));
+    }
+
+    function fitLocations() {
+        if (!locations.length || hasFit) return;
+        hasFit = true;
+        var rect = map.getBoundingClientRect();
+        var width = Math.max(rect.width || window.innerWidth, 320);
+        var height = Math.max(rect.height || window.innerHeight, 260);
+        var points = locations.map(function(location) {
+            return project(location.latitude, location.longitude, 0);
+        });
+        var minX = Math.min.apply(null, points.map(function(point) { return point.x; }));
+        var maxX = Math.max.apply(null, points.map(function(point) { return point.x; }));
+        var minY = Math.min.apply(null, points.map(function(point) { return point.y; }));
+        var maxY = Math.max.apply(null, points.map(function(point) { return point.y; }));
+        var spanX = Math.max(maxX - minX, 0.001);
+        var spanY = Math.max(maxY - minY, 0.001);
+        var scale = Math.min((width - 96) / spanX, (height - 96) / spanY);
+        zoom = clampZoom(Math.floor(Math.log2(Math.max(scale, 4))));
+        center = unproject((minX + maxX) / 2 * Math.pow(2, zoom), (minY + maxY) / 2 * Math.pow(2, zoom), zoom);
+    }
+
+    function initials(name) {
+        return (name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map(function(part) {
+            return part.charAt(0).toUpperCase();
+        }).join('') || '?';
+    }
+
+    function render() {
+        fitLocations();
+        map.innerHTML = '';
+        var rect = map.getBoundingClientRect();
+        var width = rect.width || window.innerWidth;
+        var height = rect.height || window.innerHeight;
+        var centerPoint = project(center.latitude, center.longitude, zoom);
+        var topLeft = { x: centerPoint.x - width / 2, y: centerPoint.y - height / 2 };
+        var tileMinX = Math.floor(topLeft.x / tileSize);
+        var tileMinY = Math.floor(topLeft.y / tileSize);
+        var tileMaxX = Math.floor((topLeft.x + width) / tileSize);
+        var tileMaxY = Math.floor((topLeft.y + height) / tileSize);
+        var maxTile = Math.pow(2, zoom);
+
+        for (var x = tileMinX; x <= tileMaxX; x++) {
+            for (var y = tileMinY; y <= tileMaxY; y++) {
+                if (y < 0 || y >= maxTile) continue;
+                var tile = document.createElement('img');
+                tile.className = 'im-findmy-tile';
+                tile.src = 'https://tile.openstreetmap.org/' + zoom + '/' + ((x % maxTile + maxTile) % maxTile) + '/' + y + '.png';
+                tile.alt = '';
+                tile.style.left = Math.round(x * tileSize - topLeft.x) + 'px';
+                tile.style.top = Math.round(y * tileSize - topLeft.y) + 'px';
+                map.appendChild(tile);
+            }
+        }
+
+        locations.forEach(function(location, index) {
+            var point = project(location.latitude, location.longitude, zoom);
+            var pin = document.createElement('button');
+            pin.className = 'im-findmy-pin' + (index === selectedIndex ? ' active' : '');
+            pin.type = 'button';
+            pin.textContent = initials(location.display_name);
+            pin.style.left = Math.round(point.x - topLeft.x) + 'px';
+            pin.style.top = Math.round(point.y - topLeft.y) + 'px';
+            pin.addEventListener('click', function() {
+                select(index);
+            });
+            map.appendChild(pin);
+        });
+    }
+
+    function select(index) {
+        var location = locations[index];
+        if (!location) return;
+        selectedIndex = index;
+        center = { latitude: location.latitude, longitude: location.longitude };
+        card.hidden = false;
+        card.innerHTML = '<strong>' + escapeHtml(location.display_name) + '</strong>' +
+            '<span>' + escapeHtml(location.motion_state) + ' · ' + escapeHtml(location.relative_time) + '</span>' +
+            '<span>' + escapeHtml(location.location_label) + '</span>';
+        render();
+    }
+
+    function escapeHtml(value) {
+        return String(value).replace(/[&<>"']/g, function(ch) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch];
+        });
+    }
+
+    document.querySelectorAll('.im-findmy-person').forEach(function(button) {
+        button.addEventListener('click', function() {
+            select(Number(button.dataset.findmyIndex));
+        });
+    });
+
+    function zoomBy(delta, anchorX, anchorY) {
+        var rect = map.getBoundingClientRect();
+        var beforeCenter = project(center.latitude, center.longitude, zoom);
+        var beforeAnchor = {
+            x: beforeCenter.x - rect.width / 2 + anchorX,
+            y: beforeCenter.y - rect.height / 2 + anchorY
+        };
+        var beforeGeo = unproject(beforeAnchor.x, beforeAnchor.y, zoom);
+        zoom = clampZoom(zoom + delta);
+        var afterAnchor = project(beforeGeo.latitude, beforeGeo.longitude, zoom);
+        center = unproject(
+            afterAnchor.x - anchorX + rect.width / 2,
+            afterAnchor.y - anchorY + rect.height / 2,
+            zoom
+        );
+        render();
+    }
+
+    map.addEventListener('wheel', function(event) {
+        event.preventDefault();
+        var rect = map.getBoundingClientRect();
+        zoomBy(event.deltaY < 0 ? 1 : -1, event.clientX - rect.left, event.clientY - rect.top);
+    }, { passive: false });
+
+    map.addEventListener('pointerdown', function(event) {
+        map.setPointerCapture(event.pointerId);
+        drag = {
+            x: event.clientX,
+            y: event.clientY,
+            centerPoint: project(center.latitude, center.longitude, zoom)
+        };
+    });
+
+    map.addEventListener('pointermove', function(event) {
+        if (!drag) return;
+        center = unproject(
+            drag.centerPoint.x - (event.clientX - drag.x),
+            drag.centerPoint.y - (event.clientY - drag.y),
+            zoom
+        );
+        render();
+    });
+
+    map.addEventListener('pointerup', function() {
+        drag = null;
+    });
+
+    map.addEventListener('pointercancel', function() {
+        drag = null;
+    });
+
+    document.getElementById('findmy-zoom-in').addEventListener('click', function() {
+        zoomBy(1, map.clientWidth / 2, map.clientHeight / 2);
+    });
+
+    document.getElementById('findmy-zoom-out').addEventListener('click', function() {
+        zoomBy(-1, map.clientWidth / 2, map.clientHeight / 2);
+    });
+
+    window.addEventListener('resize', function() {
+        render();
+    });
+    render();
+})();
+</script>
+{% endblock %}

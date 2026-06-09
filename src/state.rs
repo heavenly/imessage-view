@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::Instant;
 
+use crate::findmy::FindMyConfig;
 use crate::web::partials::ConversationInsightsData;
 
 #[derive(Clone)]
@@ -15,4 +16,5 @@ pub struct CachedConversationInsights {
 pub struct AppState {
     pub db: Arc<Mutex<Connection>>,
     pub conversation_insights_cache: Arc<RwLock<HashMap<i64, CachedConversationInsights>>>,
+    pub findmy: Arc<RwLock<Option<FindMyConfig>>>,
 }

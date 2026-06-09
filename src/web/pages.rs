@@ -3,8 +3,13 @@ use axum::extract::{Path, Query, State};
 use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse, Redirect};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 use crate::db::queries;
+use crate::findmy::{
+    default_db_path, default_key_path, extract_localstorage_key, read_friend_locations,
+    FindMyConfig, FriendLocation,
+};
 use crate::state::AppState;
 
 use super::format::{display_initial, format_contact_label, format_contact_value};
@@ -197,6 +202,150 @@ pub async fn search(
         query: params.q,
     };
     Html(t.render().unwrap_or_default())
+}
+
+#[derive(Template)]
+#[template(path = "findmy.html")]
+struct FindMyTemplate {
+    title: String,
+    is_configured: bool,
+    has_error: bool,
+    error_message: String,
+    status_message: String,
+    show_extract_button: bool,
+    locations: Vec<FriendLocation>,
+    locations_json: String,
+    updated_at: String,
+}
+
+pub async fn findmy(State(state): State<AppState>) -> impl IntoResponse {
+    render_findmy_page(&state, String::new())
+}
+
+pub async fn extract_findmy_key(State(state): State<AppState>) -> impl IntoResponse {
+    let existing_config = state.findmy.read().unwrap().clone();
+    let key_path = existing_config
+        .as_ref()
+        .map(|config| config.key_path.clone())
+        .unwrap_or_else(default_key_path);
+    let db_path = existing_config
+        .as_ref()
+        .map(|config| config.db_path.clone())
+        .unwrap_or_else(|| default_db_path().unwrap_or_else(|_| PathBuf::from("LocalStorage.db")));
+
+    let key_path_for_task = key_path.clone();
+    let db_path_for_task = db_path.clone();
+    let extraction = tokio::task::spawn_blocking(move || {
+        extract_localstorage_key(&key_path_for_task, &db_path_for_task)
+    })
+    .await;
+
+    let status_message = match extraction {
+        Ok(Ok(result)) => match FindMyConfig::new(result.key_path, Some(db_path)) {
+            Ok(config) => {
+                *state.findmy.write().unwrap() = Some(config);
+                result.message
+            }
+            Err(err) => format!("Key was captured, but config failed: {err}"),
+        },
+        Ok(Err(err)) => format!("{err}"),
+        Err(err) => format!("Key extraction task failed: {err}"),
+    };
+
+    render_findmy_page(&state, status_message)
+}
+
+fn render_findmy_page(state: &AppState, status_message: String) -> Html<String> {
+    let mut error_message = String::new();
+    let mut locations = Vec::new();
+    let findmy_config = state.findmy.read().unwrap().clone();
+
+    if let Some(config) = &findmy_config {
+        match read_friend_locations(config) {
+            Ok(rows) => locations = enrich_findmy_locations(state, rows),
+            Err(err) => error_message = err.to_string(),
+        }
+    }
+
+    let locations_json = serde_json::to_string(&locations).unwrap_or_else(|_| "[]".to_string());
+    let is_configured = findmy_config.is_some();
+    let has_error = !error_message.is_empty();
+    let t = FindMyTemplate {
+        title: "Find My".to_string(),
+        is_configured,
+        has_error,
+        error_message,
+        status_message,
+        show_extract_button: !is_configured || has_error,
+        locations,
+        locations_json,
+        updated_at: chrono::Local::now()
+            .format("%b %d, %Y %-I:%M %p")
+            .to_string(),
+    };
+    Html(t.render().unwrap_or_default())
+}
+
+fn enrich_findmy_locations(
+    state: &AppState,
+    mut locations: Vec<FriendLocation>,
+) -> Vec<FriendLocation> {
+    let conn = state.db.lock().unwrap();
+
+    for location in &mut locations {
+        if let Ok(Some(contact)) = queries::find_contact_by_handle(&conn, &location.handle) {
+            location.contact_id = Some(contact.id);
+            location.display_name = format_contact_value(&contact.name);
+            location.initial = display_initial(&location.display_name);
+            location.has_photo = contact.has_photo;
+            if contact.has_photo {
+                location.photo_url = format!("/contacts/{}/photo", contact.id);
+            }
+        }
+    }
+
+    dedupe_findmy_locations(locations)
+}
+
+fn dedupe_findmy_locations(locations: Vec<FriendLocation>) -> Vec<FriendLocation> {
+    let mut deduped: Vec<FriendLocation> = Vec::new();
+
+    for location in locations {
+        if location.findmy_id.is_empty() {
+            deduped.push(location);
+            continue;
+        }
+
+        if let Some(existing) = deduped
+            .iter_mut()
+            .find(|existing| existing.findmy_id == location.findmy_id)
+        {
+            if findmy_display_score(&location) > findmy_display_score(existing) {
+                *existing = location;
+            }
+        } else {
+            deduped.push(location);
+        }
+    }
+
+    deduped
+}
+
+fn findmy_display_score(location: &FriendLocation) -> u8 {
+    let mut score = 0;
+    if location.contact_id.is_some() {
+        score += 2;
+    }
+    if location.has_photo {
+        score += 2;
+    }
+    if !location.display_name.contains('@') {
+        score += 1;
+    }
+    if location.display_name != format_contact_value(&location.handle) {
+        score += 1;
+    }
+    score
 }
 
 #[derive(Deserialize)]

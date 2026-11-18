@@ -1,6 +1,6 @@
 use askama::Template;
 use axum::extract::{Path, Query, State};
-use axum::http::HeaderMap;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Redirect};
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -13,7 +13,9 @@ use crate::findmy::{
 use crate::state::AppState;
 
 use super::format::{display_initial, format_contact_label, format_contact_value};
-use super::partials::{build_conversation_shell, ExportParticipantView};
+use super::partials::{
+    build_conversation_shell, format_conversation_start, format_duration, ExportParticipantView,
+};
 
 fn canonical_conversation_id(conn: &rusqlite::Connection, conversation_id: i64) -> i64 {
     queries::resolve_canonical_conversation_id(conn, conversation_id)
@@ -133,7 +135,6 @@ struct ConversationTemplate {
     contact_initial: String,
     contact_name: String,
     is_group: bool,
-    primary_contact_id: Option<i64>,
     participant_count: usize,
     participant_summary: String,
     attachment_count: Option<i64>,
@@ -170,7 +171,6 @@ pub async fn conversation(
         contact_initial: shell.contact_initial,
         contact_name: shell.contact_name,
         is_group: shell.is_group,
-        primary_contact_id: shell.primary_contact_id,
         participant_count: shell.participant_count,
         participant_summary: shell.participant_summary,
         attachment_count: None,
@@ -475,6 +475,13 @@ struct ContactInsightDayBar {
     is_peak: bool,
 }
 
+struct ContactMoment {
+    label: String,
+    detail: String,
+    date: String,
+    message_id: i64,
+}
+
 #[derive(Template)]
 #[template(path = "contact_insights.html")]
 struct ContactInsightsTemplate {
@@ -486,6 +493,9 @@ struct ContactInsightsTemplate {
     has_photo: bool,
     has_conversation: bool,
     conversation_link: String,
+    inside_jokes: Vec<ContactMoment>,
+    shared_firsts: Vec<ContactMoment>,
+    marathons: Vec<ContactMoment>,
     sent_count: i64,
     received_count: i64,
     sent_ratio: String,
@@ -556,7 +566,13 @@ fn build_trend(trend: &queries::ContactTrendStats) -> (String, String) {
 pub async fn contact_insights(
     State(state): State<AppState>,
     Path(id): Path<i64>,
-) -> impl IntoResponse {
+) -> Result<Html<String>, StatusCode> {
+    tokio::task::spawn_blocking(move || render_contact_insights(state, id))
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+fn render_contact_insights(state: AppState, id: i64) -> Html<String> {
     let conn = state.db.lock().unwrap();
 
     let contact = queries::get_contact_basic_info(&conn, id)
@@ -569,7 +585,9 @@ pub async fn contact_insights(
         });
     let contact_name = format_contact_value(&contact.name);
     let contact_handle = format_contact_value(&contact.handle);
-    let conversation_id = queries::get_contact_conversation_id(&conn, id).unwrap_or_default();
+    let conversation_id = queries::get_contact_conversation_id(&conn, id)
+        .unwrap_or_default()
+        .map(|id| canonical_conversation_id(&conn, id));
 
     let (
         sent_count,
@@ -695,6 +713,43 @@ pub async fn contact_insights(
     let total_messages = sent_count + received_count;
     let total_starts = my_starts + their_starts;
     let contact_initial = display_initial(&contact_name);
+    let (inside_jokes, shared_firsts, marathons) = conversation_id
+        .map(|conversation_id| {
+            let inside_jokes = queries::get_contact_phrases(&conn, conversation_id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|phrase| ContactMoment {
+                    label: format!("“{}”", phrase.text),
+                    detail: format!("{} messages", phrase.count),
+                    date: format_conversation_start(phrase.first_unix)
+                        .map(|date| format!("First {date}"))
+                        .unwrap_or_default(),
+                    message_id: phrase.message_id,
+                })
+                .collect();
+            let shared_firsts = queries::get_contact_firsts(&conn, conversation_id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|first| ContactMoment {
+                    label: first.label.to_string(),
+                    detail: String::new(),
+                    date: format_conversation_start(first.date_unix).unwrap_or_default(),
+                    message_id: first.message_id,
+                })
+                .collect();
+            let marathons = queries::get_contact_marathons(&conn, conversation_id)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|marathon| ContactMoment {
+                    label: format_duration((marathon.end_unix - marathon.start_unix) as f64),
+                    detail: format!("{} sent · {} received", marathon.sent, marathon.received),
+                    date: format_conversation_start(marathon.start_unix).unwrap_or_default(),
+                    message_id: marathon.message_id,
+                })
+                .collect();
+            (inside_jokes, shared_firsts, marathons)
+        })
+        .unwrap_or_default();
     let t = ContactInsightsTemplate {
         title: format!("{contact_name} Insights"),
         contact_id: contact.id,
@@ -706,6 +761,9 @@ pub async fn contact_insights(
         conversation_link: conversation_id
             .map(|conversation_id| format!("/conversations/{conversation_id}"))
             .unwrap_or_default(),
+        inside_jokes,
+        shared_firsts,
+        marathons,
         sent_count,
         received_count,
         sent_ratio: format_ratio(sent_count, total_messages),

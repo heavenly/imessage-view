@@ -2,27 +2,8 @@
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 <div class="im-sidebar">
-    <div class="im-sidebar-header">
-        <div class="im-sidebar-title-row im-sidebar-title-row--compact">
-            <a class="im-sidebar-icon-link" href="/" title="Messages">
-                <svg viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/></svg>
-            </a>
-            <a class="im-sidebar-icon-link" href="/findmy" title="Find My">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="10" r="3"/><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/></svg>
-            </a>
-        </div>
-        <div class="im-search-shell">
-            <input type="search"
-                   name="q"
-                   class="im-search"
-                   placeholder="Search"
-                   hx-get="/partials/unified-search"
-                   hx-trigger="input changed delay:300ms, search"
-                   hx-target="#conversations-list"
-                   hx-swap="innerHTML"
-                   hx-push-url="false">
-        </div>
-    </div>
+    {% let sidebar_filter = "" %}
+    {% include "partials/sidebar_header.html" %}
     <div id="conversations-list" class="im-conversation-list" hx-get="/partials/conversations" hx-trigger="load">
         <p>Loading...</p>
     </div>
@@ -30,3 +11,4 @@
 
 {% include "partials/conversation_panel.html" %}
 {% endblock %}
+{% block theme_control %}{% endblock %}

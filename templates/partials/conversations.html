@@ -13,7 +13,11 @@
         {% if c.has_photo %}
         <img src="/conversations/{{ c.id }}/photo" alt="" loading="lazy" onload="this.classList.add('loaded')">
         {% else %}
-        <span class="im-avatar-initial">{% if c.is_group %}👥{% else %}{{ c.initial }}{% endif %}</span>
+        <span class="im-avatar-initial" aria-hidden="true">
+            {% if c.is_group %}
+            <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 19v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 5a3 3 0 0 1 0 6m5 8v-2a4 4 0 0 0-3-3.87"/></svg>
+            {% else %}{{ c.initial }}{% endif %}
+        </span>
         {% endif %}
     </div>
     <div class="im-conversation-content">
@@ -24,7 +28,7 @@
         <div class="im-conversation-bottom">
             <span class="im-conversation-preview">{{ c.last_preview }}</span>
             {% if c.message_count > 0 %}
-            <span class="im-conversation-badge">{{ c.message_count }}</span>
+            <span class="im-conversation-badge" title="{{ c.message_count }} total messages">{{ c.message_count }}</span>
             {% endif %}
         </div>
     </div>

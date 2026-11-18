@@ -247,7 +247,9 @@ pub struct GroupReactionHighlightView {
     pub title: String,
     pub glyph: String,
     pub metric: String,
+    pub count: i64,
     pub sender_name: String,
+    pub is_from_me: bool,
     pub preview: String,
     pub message_id: i64,
 }
@@ -370,7 +372,21 @@ pub fn build_group_reaction_highlights(
         body: Option<String>,
         date_unix: i64,
         sender_name: Option<String>,
+        is_from_me: bool,
         has_attachments: bool,
+    }
+
+    impl MessageSummary {
+        fn sender_label(&self) -> String {
+            if self.is_from_me {
+                "You".to_string()
+            } else {
+                self.sender_name
+                    .as_deref()
+                    .map(format_contact_value)
+                    .unwrap_or_else(|| "Unknown".to_string())
+            }
+        }
     }
 
     #[derive(Clone)]
@@ -463,6 +479,7 @@ pub fn build_group_reaction_highlights(
                 body: row.message_body.clone(),
                 date_unix: row.message_date_unix,
                 sender_name: row.message_sender_name.clone(),
+                is_from_me: row.message_is_from_me,
                 has_attachments: row.message_has_attachments,
             });
             by_sender.clear();
@@ -507,12 +524,9 @@ pub fn build_group_reaction_highlights(
                     .unwrap_or("?")
                     .to_string(),
                 metric: format!("{} {}", best.count, pluralize(noun, best.count)),
-                sender_name: best
-                    .message
-                    .sender_name
-                    .clone()
-                    .map(|name| format_contact_value(&name))
-                    .unwrap_or_else(|| "Unknown".to_string()),
+                count: best.count,
+                sender_name: best.message.sender_label(),
+                is_from_me: best.message.is_from_me,
                 preview: message_preview(
                     best.message.body.as_deref(),
                     best.message.has_attachments,
@@ -527,12 +541,9 @@ pub fn build_group_reaction_highlights(
             title: "Most Varied Reactions".to_string(),
             glyph: "✨".to_string(),
             metric: format!("{} {}", best.count, pluralize("type", best.count)),
-            sender_name: best
-                .message
-                .sender_name
-                .clone()
-                .map(|name| format_contact_value(&name))
-                .unwrap_or_else(|| "Unknown".to_string()),
+            count: best.count,
+            sender_name: best.message.sender_label(),
+            is_from_me: best.message.is_from_me,
             preview: message_preview(best.message.body.as_deref(), best.message.has_attachments),
             message_id: best.message.id,
         });
@@ -573,7 +584,6 @@ struct ConversationPanelTemplate {
     contact_initial: String,
     contact_name: String,
     is_group: bool,
-    primary_contact_id: Option<i64>,
     participant_count: usize,
     participant_summary: String,
     attachment_count: Option<i64>,
@@ -760,7 +770,6 @@ pub async fn conversation_panel_partial(
         contact_initial: shell.contact_initial,
         contact_name: shell.contact_name,
         is_group: shell.is_group,
-        primary_contact_id: shell.primary_contact_id,
         participant_count: shell.participant_count,
         participant_summary: shell.participant_summary,
         attachment_count: None,

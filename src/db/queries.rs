@@ -59,6 +59,7 @@ pub struct GroupReactionHighlightRow {
     pub reaction_is_from_me: bool,
     pub reaction_sender_name: Option<String>,
     pub reaction_type: i64,
+    pub message_is_from_me: bool,
 }
 
 fn map_message_row(row: &rusqlite::Row) -> rusqlite::Result<MessageRow> {
@@ -788,7 +789,8 @@ pub fn get_group_reaction_highlight_rows(
                 tm.has_attachments,
                 r.is_from_me,
                 COALESCE(rct.display_name, rct.handle) AS reaction_sender_name,
-                r.reaction_type
+                r.reaction_type,
+                tm.is_from_me
          FROM reacted_messages rm
          JOIN messages tm ON tm.guid = rm.associated_message_guid
          JOIN messages r ON r.associated_message_guid = tm.guid
@@ -813,6 +815,7 @@ pub fn get_group_reaction_highlight_rows(
                 reaction_is_from_me: row.get(5)?,
                 reaction_sender_name: row.get(6)?,
                 reaction_type: row.get(7)?,
+                message_is_from_me: row.get(8)?,
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -2158,6 +2161,221 @@ pub fn get_contact_first_last_dates(
     )?;
 
     Ok(range)
+}
+
+#[derive(Debug)]
+pub struct ContactPhrase {
+    pub text: String,
+    pub count: i64,
+    pub message_id: i64,
+    pub first_unix: i64,
+}
+
+pub fn get_contact_phrases(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Vec<ContactPhrase>> {
+    const PHRASE: &str = "LOWER(TRIM(m.body, char(9, 10, 13, 34) || ' .!?…,:;“”'))";
+    let mut candidates = conn.prepare(&format!(
+        "WITH short_messages AS (
+             SELECT {PHRASE} AS phrase, m.is_from_me, m.date_unix
+             FROM messages m
+             WHERE m.conversation_id = ?1 AND m.is_reaction = FALSE
+               AND LENGTH(m.body) BETWEEN 3 AND 80
+               AND INSTR(m.body, '://') = 0 AND INSTR(m.body, char(10)) = 0
+         )
+         SELECT phrase, COUNT(*), MIN(date_unix)
+         FROM short_messages
+         WHERE LENGTH(phrase) - LENGTH(REPLACE(phrase, ' ', '')) BETWEEN 1 AND 7
+         GROUP BY phrase
+         HAVING COUNT(*) >= 3 AND SUM(is_from_me) BETWEEN 1 AND COUNT(*) - 1
+         ORDER BY COUNT(*) DESC, phrase
+         LIMIT 48"
+    ))?;
+    let mut elsewhere = conn.prepare(&format!(
+        "SELECT COUNT(*) FROM (
+             SELECT 1
+             FROM messages_fts
+             JOIN messages m ON m.id = messages_fts.rowid
+             WHERE messages_fts MATCH ?1 AND m.conversation_id <> ?2
+               AND m.is_reaction = FALSE AND {PHRASE} = ?3
+             LIMIT 4
+         )"
+    ))?;
+    let mut first = conn.prepare(&format!(
+        "SELECT m.id
+         FROM messages m
+         WHERE m.conversation_id = ?1 AND m.date_unix = ?2
+           AND m.is_reaction = FALSE AND {PHRASE} = ?3
+         ORDER BY m.id
+         LIMIT 1"
+    ))?;
+
+    let mut rows = candidates.query([conversation_id])?;
+    let mut phrases = Vec::new();
+    while let Some(row) = rows.next()? {
+        let phrase: String = row.get(0)?;
+        let first_unix: i64 = row.get(2)?;
+        let literal = format!("\"{}\"", phrase.replace('"', "\"\""));
+        let elsewhere_count: i64 = elsewhere.query_row(
+            rusqlite::params![literal, conversation_id, phrase],
+            |row| row.get(0),
+        )?;
+        if elsewhere_count >= 4 {
+            continue;
+        }
+
+        let message_id = first.query_row(
+            rusqlite::params![conversation_id, first_unix, phrase],
+            |row| row.get(0),
+        )?;
+        phrases.push(ContactPhrase {
+            text: phrase,
+            count: row.get(1)?,
+            message_id,
+            first_unix,
+        });
+        if phrases.len() == 4 {
+            break;
+        }
+    }
+
+    Ok(phrases)
+}
+
+#[derive(Debug)]
+pub struct ContactFirst {
+    pub label: &'static str,
+    pub message_id: i64,
+    pub date_unix: i64,
+}
+
+pub fn get_contact_firsts(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Vec<ContactFirst>> {
+    let first = |label: &'static str, sql: &str| {
+        conn.query_row(sql, [conversation_id], |row| {
+            Ok(ContactFirst {
+                label,
+                message_id: row.get(0)?,
+                date_unix: row.get(1)?,
+            })
+        })
+        .optional()
+    };
+    let first_attachment = |label, predicate: &str| {
+        first(
+            label,
+            &format!(
+                "SELECT m.id, m.date_unix
+                 FROM messages m
+                 WHERE m.conversation_id = ?1 AND m.is_reaction = FALSE
+                   AND EXISTS (
+                       SELECT 1 FROM attachments a
+                       WHERE a.message_id = m.id
+                         AND COALESCE(a.is_sticker, 0) = 0
+                         AND COALESCE(a.hide_attachment, 0) = 0
+                         AND ({predicate})
+                   )
+                 ORDER BY m.date_unix, m.id
+                 LIMIT 1"
+            ),
+        )
+    };
+
+    let image = format!(
+        "{} AND COALESCE(m.balloon_bundle_id, '') NOT LIKE '%URLBalloonProvider'",
+        attachment_category_sql("image")
+    );
+    let voice = format!(
+        "LOWER(a.uti) = 'com.apple.coreaudio-format'
+         OR LOWER(a.mime_type) LIKE 'audio/x-caf%'
+         OR LOWER(a.transfer_name) LIKE 'audio message.%'
+         OR {}",
+        attachment_extension_predicate(&["caf"])
+    );
+
+    Ok([
+        first_attachment("First photo", &image)?,
+        first_attachment("First voice note", &voice)?,
+        first(
+            "First link",
+            "SELECT m.id, m.date_unix
+             FROM messages m
+             WHERE m.conversation_id = ?1 AND m.is_reaction = FALSE
+               AND (m.body GLOB '*https://?*' OR m.body GLOB '*http://?*')
+             ORDER BY m.date_unix, m.id
+             LIMIT 1",
+        )?,
+        first(
+            "First reaction",
+            "SELECT target.id, r.date_unix
+             FROM messages r
+             JOIN messages target ON target.guid = r.associated_message_guid
+             WHERE r.conversation_id = ?1 AND r.is_reaction = TRUE
+               AND r.reaction_type BETWEEN 2000 AND 2007
+               AND target.conversation_id = ?1 AND target.is_reaction = FALSE
+             ORDER BY r.date_unix, r.id
+             LIMIT 1",
+        )?,
+    ]
+    .into_iter()
+    .flatten()
+    .collect())
+}
+
+#[derive(Debug)]
+pub struct ContactMarathon {
+    pub message_id: i64,
+    pub start_unix: i64,
+    pub end_unix: i64,
+    pub sent: i64,
+    pub received: i64,
+}
+
+pub fn get_contact_marathons(
+    conn: &Connection,
+    conversation_id: i64,
+) -> anyhow::Result<Vec<ContactMarathon>> {
+    let mut stmt = conn.prepare(
+        "WITH ordered AS (
+             SELECT id, date_unix, is_from_me,
+                    LAG(date_unix) OVER (ORDER BY date_unix, id) AS previous_date
+             FROM messages
+             WHERE conversation_id = ?1 AND is_reaction = FALSE
+         ),
+         starts AS (
+             SELECT id, date_unix, is_from_me,
+                    CASE WHEN previous_date IS NULL OR date_unix - previous_date > 1800
+                         THEN id END AS start_id
+             FROM ordered
+         ),
+         sessions AS (
+             SELECT date_unix, is_from_me, start_id,
+                    COUNT(start_id) OVER (ORDER BY date_unix, id ROWS UNBOUNDED PRECEDING) AS session_id
+             FROM starts
+         )
+         SELECT MAX(start_id), MIN(date_unix), MAX(date_unix), SUM(is_from_me),
+                COUNT(*) - SUM(is_from_me)
+         FROM sessions
+         GROUP BY session_id
+         HAVING SUM(is_from_me) BETWEEN 2 AND COUNT(*) - 2
+         ORDER BY MAX(date_unix) - MIN(date_unix) DESC, COUNT(*) DESC, MIN(date_unix)
+         LIMIT 3",
+    )?;
+    let rows = stmt
+        .query_map([conversation_id], |row| {
+            Ok(ContactMarathon {
+                message_id: row.get(0)?,
+                start_unix: row.get(1)?,
+                end_unix: row.get(2)?,
+                sent: row.get(3)?,
+                received: row.get(4)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
 }
 
 pub fn get_contact_longest_streak(conn: &Connection, conversation_id: i64) -> anyhow::Result<i64> {

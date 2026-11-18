@@ -12,7 +12,11 @@
                 {% if c.has_photo %}
                 <img src="/conversations/{{ c.id }}/photo" alt="" loading="lazy" onload="this.classList.add('loaded')">
                 {% else %}
-                <span class="im-avatar-initial">{% if c.is_group %}👥{% else %}{{ c.initial }}{% endif %}</span>
+                <span class="im-avatar-initial" aria-hidden="true">
+                    {% if c.is_group %}
+                    <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 19v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 5a3 3 0 0 1 0 6m5 8v-2a4 4 0 0 0-3-3.87"/></svg>
+                    {% else %}{{ c.initial }}{% endif %}
+                </span>
                 {% endif %}
             </div>
             <span class="im-search-chip-name">{{ c.name }}</span>

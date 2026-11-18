@@ -1,9 +1,11 @@
-<div class="im-main" id="main-content">
+<div class="im-main" id="main-content"
+     hx-on::before-request="if (event.detail.target?.id === 'contact-insights-content') showContactSheet(true)"
+     hx-on::after-request="if (event.detail.target?.id === 'contact-insights-content' && !event.detail.successful) event.detail.target.textContent = 'Could not load contact insights. Go back and try again.'">
 <div class="im-conversation-wrapper">
 <div class="im-chat-container">
     <header class="im-chat-header">
         <div class="im-chat-header-side" aria-hidden="true"></div>
-        <button class="im-chat-header-info{% if !is_group %} im-chat-header-info--solo{% endif %}" onclick="document.getElementById('contact-info-modal').classList.add('active')">
+        <button class="im-chat-header-info{% if !is_group %} im-chat-header-info--solo{% endif %}" onclick="showContactSheet(false)">
             <div class="im-avatar{% if is_group %} im-avatar--group{% endif %}">
                 {% if has_photo %}
                 <img src="/conversations/{{ conversation_id }}/photo" alt="" onload="this.classList.add('loaded')">
@@ -74,7 +76,6 @@
     </div>
 </aside>
 </div>
-</div>
 
 <div id="export-messages-modal" class="modal-overlay" onclick="if(event.target===this)closeExportMessagesModal()">
     <div class="modal-content im-contact-modal im-export-modal">
@@ -136,35 +137,48 @@
 </div>
 
 <div id="contact-info-modal" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('active')">
-    <div class="modal-content im-contact-modal">
-        <button class="modal-close" onclick="document.getElementById('contact-info-modal').classList.remove('active')">&times;</button>
-        <div class="im-contact-modal-body">
-            <div class="im-contact-modal-hero">
-                <div class="im-avatar im-contact-modal-avatar{% if is_group %} im-avatar--group{% endif %}">
+    <div class="modal-content im-contact-sheet" role="dialog" aria-labelledby="contact-info-modal-title">
+        <div id="contact-details-view" class="im-contact-modal-body">
+            <header class="im-contact-modal-hero">
+                <div class="im-avatar im-contact-modal-avatar" aria-hidden="true">
                     {% if has_photo %}
                     <img src="/conversations/{{ conversation_id }}/photo" alt="" onload="this.classList.add('loaded')">
                     {% else %}
-                    <span class="im-avatar-initial">{% if is_group %}👥{% else %}{{ contact_initial }}{% endif %}</span>
+                    <span class="im-avatar-initial">
+                        {% if is_group %}
+                        <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 19v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2M16 5a3 3 0 0 1 0 6m5 8v-2a4 4 0 0 0-3-3.87"/></svg>
+                        {% else %}{{ contact_initial }}{% endif %}
+                    </span>
                     {% endif %}
                 </div>
-                <div class="im-contact-modal-heading">
-                    <p class="im-contact-modal-kicker">{% if is_group %}Group conversation{% else %}Contact details{% endif %}</p>
-                    <div class="im-contact-modal-title-row">
-                        <h2 class="im-contact-modal-name">{{ contact_name }}</h2>
-                        {% if !is_group %}
-                        {% if let Some(contact_id) = primary_contact_id %}
-                        <a href="/contacts/{{ contact_id }}" class="im-contact-modal-link-icon" title="Open contact insights" aria-label="Open contact insights">i</a>
-                        {% endif %}
-                        {% endif %}
-                    </div>
+                <div class="im-contact-modal-identity">
+                    <h2 id="contact-info-modal-title">{{ contact_name }}</h2>
+                    {% if is_group %}
+                    <p>{{ participant_count }} participants</p>
+                    {% endif %}
                 </div>
-            </div>
-            <div id="contact-info-modal-insights" class="im-contact-modal-content">
+                <button type="button" class="modal-close" aria-label="Close contact details" onclick="document.getElementById('contact-info-modal').classList.remove('active')">&times;</button>
+            </header>
+            <div id="contact-info-modal-insights">
                 <div class="im-loading">
                     <span class="im-spinner"></span>
                     <p>Loading details...</p>
                 </div>
             </div>
+        </div>
+        <div id="contact-insights-view" class="im-contact-modal-body im-contact-insights-view" hidden>
+            <header class="im-contact-modal-hero">
+                <button type="button" class="im-contact-modal-back" onclick="showContactSheet(false)">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 6-6 6 6 6"/></svg>
+                    Back
+                </button>
+                <div class="im-contact-modal-identity">
+                    <h2 id="contact-insights-title">Contact insights</h2>
+                </div>
+                <button type="button" class="modal-close" aria-label="Close contact insights" onclick="document.getElementById('contact-info-modal').classList.remove('active')">&times;</button>
+            </header>
+            <div id="contact-insights-content" class="im-contact-insights-content"
+                 hx-boost="true" hx-target="#main-content" hx-select="#main-content" hx-swap="outerHTML show:none"></div>
         </div>
     </div>
 </div>
@@ -187,6 +201,27 @@
 </div>
 
 <script>
+window.showContactSheet = function(showInsights) {
+    var modal = document.getElementById('contact-info-modal');
+    var details = document.getElementById('contact-details-view');
+    var insights = document.getElementById('contact-insights-view');
+    var sheet = modal.querySelector('.im-contact-sheet');
+    var focusTarget = details.querySelector('.modal-close');
+
+    if (showInsights) {
+        document.getElementById('contact-insights-content').textContent = 'Loading contact insights…';
+        focusTarget = insights.querySelector('.im-contact-modal-back');
+    } else if (modal.classList.contains('active')) {
+        focusTarget = details.querySelector('.im-contact-modal-action') || focusTarget;
+    }
+
+    details.hidden = showInsights;
+    insights.hidden = !showInsights;
+    sheet.setAttribute('aria-labelledby', showInsights ? 'contact-insights-title' : 'contact-info-modal-title');
+    modal.classList.add('active');
+    focusTarget.focus();
+};
+
 window.openExportMessagesModal = function() {
     var modal = document.getElementById('export-messages-modal');
     if (modal) {
@@ -475,3 +510,4 @@ window.toggleSidebar = function() {
     }
 })();
 </script>
+</div>

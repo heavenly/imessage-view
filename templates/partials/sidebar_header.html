@@ -1,0 +1,28 @@
+<div class="im-sidebar-header">
+    <div class="im-sidebar-title-row">
+        <h1><a href="/">iMessage</a></h1>
+        <div class="im-sidebar-actions">
+            <a class="im-sidebar-control" href="/findmy" title="Find My">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="10" r="3"/><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/></svg>
+            </a>
+            {% let is_floating_theme = false %}
+            {% include "partials/theme_toggle.html" %}
+        </div>
+    </div>
+    <div class="im-search-shell">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6"/><path d="m16 16 4 4"/></svg>
+        <input type="search"
+               id="sidebar-search"
+               name="q"
+               class="im-search"
+               aria-label="Search conversations and messages"
+               aria-keyshortcuts="Meta+F"
+               placeholder="Search"
+               value="{{ sidebar_filter }}"
+               hx-get="/partials/unified-search"
+               hx-trigger="input changed delay:300ms, search"
+               hx-target="#conversations-list"
+               hx-swap="innerHTML"
+               hx-push-url="false">
+    </div>
+</div>

@@ -2,24 +2,8 @@
 {% block title %}{{ title }}{% endblock %}
 {% block content %}
 <div class="im-sidebar">
-    <div class="im-sidebar-header">
-        <div class="im-sidebar-title-row">
-            <h1>iMessage</h1>
-            <a class="im-sidebar-icon-link" href="/findmy" title="Find My">
-                <svg viewBox="0 0 24 24"><circle cx="12" cy="10" r="3"/><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/></svg>
-            </a>
-        </div>
-        <input type="search"
-               name="q"
-               class="im-search"
-               placeholder="Search"
-               value="{{ filter }}"
-               hx-get="/partials/unified-search"
-               hx-trigger="input changed delay:300ms, search"
-               hx-target="#conversations-list"
-               hx-swap="innerHTML"
-               hx-push-url="false">
-    </div>
+    {% let sidebar_filter = filter.as_str() %}
+    {% include "partials/sidebar_header.html" %}
     <div id="conversations-list" class="im-conversation-list">
         {% include "partials/conversations.html" %}
     </div>
@@ -30,3 +14,4 @@
     </div>
 </div>
 {% endblock %}
+{% block theme_control %}{% endblock %}
